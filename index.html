@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="JobApplyAgent — a personal career control room: resume ATS checking, job scouting, AI-assisted tailoring, and interview prep in one place.">
+<meta property="og:title" content="JobApplyAgent — career control room">
+<meta property="og:description" content="Resume ATS checking, job scouting, AI-assisted resume tailoring, and interview prep — self-hosted, your data stays in your browser.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#3F6C51">
+<title>JobApplyAgent — career control room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="app">
+  <div class="rail">
+    <div class="brand">
+      <div class="brand-row">
+        <img src="favicon.svg" width="22" height="22" alt="JobApplyAgent logo" style="flex-shrink:0;">
+        <h1>JobApplyAgent</h1>
+      </div>
+      <p>Your job search, staged.</p>
+    </div>
+    <button class="stage-btn active" data-stage="overview"><span><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/></svg>Overview</span></button>
+    <button class="stage-btn" data-stage="resume"><span><svg class="icon" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>Resume</span><span class="badge-count" id="countAts">—</span></button>
+    <button class="stage-btn" data-stage="scout"><span><svg class="icon" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>Scout</span><span class="badge-count" id="countJobs">0</span></button>
+    <button class="stage-btn" data-stage="match"><span><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>Match &amp; tailor</span></button>
+    <button class="stage-btn" data-stage="prepare"><span><svg class="icon" viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 5 5v3a5 5 0 0 1-10 0V8a5 5 0 0 1 5-5z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>Prepare</span></button>
+    <button class="stage-btn" data-stage="track"><span><svg class="icon" viewBox="0 0 24 24"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><polyline points="4 6 5 7 7 4.5"/><polyline points="4 12 5 13 7 10.5"/><polyline points="4 18 5 19 7 16.5"/></svg>Track</span></button>
+
+    <div class="theme-toggle-wrap">
+      <button class="stage-btn" id="themeToggleBtn" style="width:100%;">
+        <span>
+          <svg class="icon icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="7" y2="7"/><line x1="17" y1="17" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="7" y2="17"/><line x1="17" y1="7" x2="19.1" y2="4.9"/></svg>
+          <svg class="icon icon-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+          <span id="themeToggleLabel">Light mode</span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- OVERVIEW -->
+    <div class="panel active" id="panel-overview">
+      <div class="panel-head">
+        <h2>Overview</h2>
+        <p>Where your search stands right now, end to end.</p>
+      </div>
+      <div class="card">
+        <h3>Settings</h3>
+        <label for="apiKeyInput">AI API key (used for Match &amp; tailor and Prepare)</label>
+        <div class="row" style="align-items:flex-start;">
+          <input type="text" id="apiKeyInput" placeholder="sk-...">
+          <button class="btn secondary" id="saveApiKeyBtn" style="flex:none;">Save key</button>
+        </div>
+        <div class="note">Stored only in this browser's local storage, sent only directly to the AI provider's API when you use Match &amp; tailor or Prepare. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get an API key here</a>. This calls the API directly from your browser — fine for personal use, not something to deploy for other people to use with your key.</div>
+        <div id="apiKeyStatus" class="note"></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-num" id="ovResumeStat">—</div><div class="stat-lbl">ATS readiness</div></div>
+        <div class="stat-card"><div class="stat-num" id="ovJobsStat">0</div><div class="stat-lbl">Jobs in pipeline</div></div>
+        <div class="stat-card"><div class="stat-num" id="ovTailoredStat">0</div><div class="stat-lbl">Resumes tailored</div></div>
+        <div class="stat-card"><div class="stat-num" id="ovPrepStat">0</div><div class="stat-lbl">Interviews prepped</div></div>
+      </div>
+      <div class="card">
+        <h3>Application funnel</h3>
+        <div id="funnelChart"></div>
+      </div>
+      <div class="card" id="nextActionCard">
+        <h3>Next best action</h3>
+        <div id="nextAction"></div>
+      </div>
+    </div>
+
+    <!-- RESUME -->
+    <div class="panel" id="panel-resume">
+      <div class="panel-head">
+        <h2>Your resume</h2>
+        <p>Upload a file or paste text. Everything downstream — matching, tailoring, interview prep — reads from this, and we'll check it for ATS-breaking issues first.</p>
+      </div>
+      <div class="card">
+        <label for="resumeFile">Upload resume (.pdf, .docx, or .txt)</label>
+        <input type="file" id="resumeFile" accept=".pdf,.docx,.txt" style="padding:7px;">
+        <div id="fileParseStatus" class="note"></div>
+        <div class="divider"></div>
+        <label for="resumeInput">Resume text</label>
+        <textarea id="resumeInput" style="min-height:280px" placeholder="Paste your resume here — work history, skills, education..."></textarea>
+        <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+          <button class="btn" id="saveResumeBtn">Save &amp; check ATS readiness</button>
+          <span id="resumeSavedNote" class="note" style="margin:0;"></span>
+        </div>
+      </div>
+      <div id="atsCard"></div>
+    </div>
+
+    <!-- SCOUT -->
+    <div class="panel" id="panel-scout">
+      <div class="panel-head">
+        <h2>Scout jobs</h2>
+        <p>Search live listings, or paste in a job you found on LinkedIn or a company careers page — those sites can't be searched directly, but any listing can be added by hand.</p>
+      </div>
+
+      <div class="card">
+        <h3>Search live listings</h3>
+        <div class="row">
+          <div class="field"><label for="searchKeyword">Keyword</label><input type="text" id="searchKeyword" placeholder="e.g. product designer"></div>
+          <div class="field"><label for="searchLocation">Location contains (optional)</label><input type="text" id="searchLocation" placeholder="e.g. remote, London"></div>
+        </div>
+        <button class="btn" id="searchJobsBtn">Search</button>
+        <div class="note">Pulls from Arbeitnow's open job board (mostly tech &amp; remote roles). For LinkedIn or a specific company, add the listing manually below.</div>
+        <div id="searchStatus" style="margin-top:12px;"></div>
+        <div id="searchResults" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h3>Add a job manually</h3>
+        <div class="row">
+          <div class="field"><label for="manTitle">Job title</label><input type="text" id="manTitle" placeholder="Senior Data Analyst"></div>
+          <div class="field"><label for="manCompany">Company</label><input type="text" id="manCompany" placeholder="Acme Corp"></div>
+        </div>
+        <div class="field"><label for="manUrl">Link (optional)</label><input type="text" id="manUrl" placeholder="https://..."></div>
+        <div class="field"><label for="manDesc">Job description</label><textarea id="manDesc" placeholder="Paste the full job description text here"></textarea></div>
+        <button class="btn" id="addManualBtn">Add to pipeline</button>
+        <div id="manualStatus" class="note"></div>
+      </div>
+    </div>
+
+    <!-- MATCH -->
+    <div class="panel" id="panel-match">
+      <div class="panel-head">
+        <h2>Match &amp; tailor</h2>
+        <p>Pick a saved job to see how your resume stacks up, and get a tailored summary and bullets to emphasize.</p>
+      </div>
+      <div id="matchEmpty" class="empty">No saved jobs yet. <a onclick="switchStage('scout')">Go scout one</a>.</div>
+      <div id="matchBody" style="display:none;">
+        <div class="card">
+          <label for="matchJobSelect">Job</label>
+          <select id="matchJobSelect"></select>
+          <div style="margin-top:14px;">
+            <button class="btn" id="analyzeBtn">Analyze &amp; tailor resume</button>
+          </div>
+          <div id="matchStatus" style="margin-top:12px;"></div>
+        </div>
+        <div id="matchResult"></div>
+      </div>
+    </div>
+
+    <!-- PREPARE -->
+    <div class="panel" id="panel-prepare">
+      <div class="panel-head">
+        <h2>Prepare</h2>
+        <p>Generate role-specific talking points and likely interview questions, then practice answers and get feedback.</p>
+      </div>
+      <div id="prepEmpty" class="empty">No saved jobs yet. <a onclick="switchStage('scout')">Go scout one</a>.</div>
+      <div id="prepBody" style="display:none;">
+        <div class="card">
+          <label for="prepJobSelect">Job</label>
+          <select id="prepJobSelect"></select>
+          <div style="margin-top:14px;">
+            <button class="btn" id="prepGenBtn">Generate interview prep</button>
+          </div>
+          <div id="prepStatus" style="margin-top:12px;"></div>
+        </div>
+        <div id="prepResult"></div>
+      </div>
+    </div>
+
+    <!-- TRACK -->
+    <div class="panel" id="panel-track">
+      <div class="panel-head">
+        <h2>Track</h2>
+        <p>Every job you've saved, and where it stands.</p>
+      </div>
+      <div id="trackEmpty" class="empty">Nothing saved yet. <a onclick="switchStage('scout')">Go scout a job</a>.</div>
+      <div id="trackBody" style="display:none;" class="card">
+        <table>
+          <thead><tr><th>Role</th><th>Company</th><th>Status</th><th>Progress</th><th></th></tr></thead>
+          <tbody id="trackTableBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Backup your data</h3>
+        <p class="note" style="margin-top:0;">Everything lives in this browser only. Export a backup before clearing browser data or switching devices.</p>
+        <div class="row" style="align-items:center;">
+          <button class="btn secondary" id="exportBtn" style="flex:none;">Export backup (.json)</button>
+          <input type="file" id="importFile" accept=".json" style="max-width:260px; padding:6px;">
+        </div>
+        <div id="importStatus" class="note"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
