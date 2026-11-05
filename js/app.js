@@ -3,7 +3,8 @@ if(window['pdfjsLib']){
 }
 let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null };
 const STORAGE_KEY = 'jobapplyagent-data';
-const API_KEY_STORAGE_KEY = 'jobapplyagent-ai-key';
+// Set this to your deployed proxy's URL (see README: "Setting up the AI proxy").
+const PROXY_URL = 'https://YOUR-PROXY.vercel.app/api/chat';
 const THEME_STORAGE_KEY = 'jobapplyagent-theme';
 
 function migrateOldKeys(){
@@ -11,15 +12,11 @@ function migrateOldKeys(){
   if(!localStorage.getItem(STORAGE_KEY) && localStorage.getItem('pipeline-data')){
     localStorage.setItem(STORAGE_KEY, localStorage.getItem('pipeline-data'));
   }
-  if(!localStorage.getItem(API_KEY_STORAGE_KEY) && localStorage.getItem('pipeline-anthropic-key')){
-    localStorage.setItem(API_KEY_STORAGE_KEY, localStorage.getItem('pipeline-anthropic-key'));
-  }
-  if(!localStorage.getItem(API_KEY_STORAGE_KEY) && localStorage.getItem('jobapplyagent-anthropic-key')){
-    localStorage.setItem(API_KEY_STORAGE_KEY, localStorage.getItem('jobapplyagent-anthropic-key'));
-  }
   if(!localStorage.getItem(THEME_STORAGE_KEY) && localStorage.getItem('pipeline-theme')){
     localStorage.setItem(THEME_STORAGE_KEY, localStorage.getItem('pipeline-theme'));
   }
+  // API keys are no longer stored in the browser: remove any left over from older versions
+  ['jobapplyagent-ai-key', 'jobapplyagent-anthropic-key', 'pipeline-anthropic-key'].forEach(k => localStorage.removeItem(k));
 }
 migrateOldKeys();
 
@@ -31,8 +28,6 @@ function loadState(){
       state = Object.assign(state, parsed);
     }
   }catch(e){ /* no saved data yet, or storage unavailable */ }
-  const savedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if(savedKey) document.getElementById('apiKeyInput').value = savedKey;
   render();
 }
 
@@ -65,21 +60,6 @@ function switchStage(stage){
 }
 document.querySelectorAll('.stage-btn').forEach(b => b.addEventListener('click', () => switchStage(b.dataset.stage)));
 
-document.getElementById('saveApiKeyBtn').addEventListener('click', () => {
-  const key = document.getElementById('apiKeyInput').value.trim();
-  const statusEl = document.getElementById('apiKeyStatus');
-  if(!key){
-    localStorage.removeItem(API_KEY_STORAGE_KEY);
-    statusEl.textContent = 'Key cleared.';
-    showToast('API key cleared.', 'success');
-  } else {
-    localStorage.setItem(API_KEY_STORAGE_KEY, key);
-    statusEl.textContent = 'Key saved to this browser.';
-    showToast('API key saved.', 'success');
-  }
-  setTimeout(() => statusEl.textContent = '', 2500);
-});
-
 function uid(){ return 'j' + Math.random().toString(36).slice(2, 10); }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -92,38 +72,30 @@ function showToast(message, type){
   setTimeout(() => el.remove(), 3200);
 }
 
-async function callClaude(prompt, maxTokens){
-  const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-  if(!apiKey){
-    throw new Error('NO_API_KEY');
+async function callApi(task, payload){
+  if(PROXY_URL.includes('YOUR-PROXY')) throw new Error('NOT_CONFIGURED');
+  let response;
+  try{
+    response = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ task: task }, payload))
+    });
+  }catch(e){
+    throw new Error('NETWORK');
   }
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: maxTokens || 1000,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  if(!response.ok){
-    if(response.status === 401) throw new Error('BAD_API_KEY');
-    throw new Error('API request failed: ' + response.status);
-  }
+  if(response.status === 429) throw new Error('RATE_LIMITED');
+  if(!response.ok) throw new Error('API_ERROR');
   const data = await response.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  if(!textBlock) throw new Error('No text in response');
-  return textBlock.text;
+  if(!data || typeof data.text !== 'string') throw new Error('API_ERROR');
+  return data.text;
 }
 
 function apiErrorMessage(e){
-  if(e && e.message === 'NO_API_KEY') return 'Add your AI API key in Settings (top of Overview) to use AI features.';
-  if(e && e.message === 'BAD_API_KEY') return 'That API key was rejected. Check it in Settings.';
+  const code = e && e.message;
+  if(code === 'NOT_CONFIGURED') return 'The AI proxy URL is not set yet. Set PROXY_URL at the top of js/app.js.';
+  if(code === 'RATE_LIMITED') return 'Too many AI requests from your network just now. Wait a few minutes and try again.';
+  if(code === 'NETWORK') return 'Could not reach the AI service. Check your connection and try again.';
   return 'Something went wrong reaching the AI. Try again.';
 }
 
@@ -330,24 +302,16 @@ document.getElementById('analyzeBtn').addEventListener('click', async () => {
     statusEl.innerHTML = '<span class="error-text">Save your resume first (Stage 1).</span>';
     return;
   }
-  if(!localStorage.getItem(API_KEY_STORAGE_KEY)){
-    statusEl.innerHTML = '<span class="error-text">Add your AI API key first — go to <a onclick="switchStage(\'overview\')">Overview → Settings</a>.</span>';
-    showToast('No API key set yet.', 'error');
-    return;
-  }
   if(!job) return;
   statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Comparing your resume against this role...</div>';
   document.getElementById('analyzeBtn').disabled = true;
   try{
-    const prompt = 'You are a career coach. Compare this resume against this job description.\\n\\n' +
-      'RESUME:\\n' + state.resume.slice(0, 6000) + '\\n\\n' +
-      'JOB DESCRIPTION (' + job.title + ' at ' + job.company + '):\\n' + job.description.slice(0, 4000) + '\\n\\n' +
-      'Respond with ONLY valid JSON, no preamble, in this exact shape:\\n' +
-      '{"matchScore": <0-100 integer>, "strengths": ["...", "..."], "gaps": ["...", "..."], ' +
-      '"summary": "<a tailored 3-4 sentence professional summary for this specific role, written in first person as it would appear at the top of a resume>", ' +
-      '"bullets": ["<tailored resume bullet emphasizing relevant experience>", "..."]}\\n' +
-      'Give 3-5 items for strengths, gaps, and bullets each. Be specific and honest, not generic.';
-    const text = await callClaude(prompt, 1000);
+    const text = await callApi('match', {
+      resume: state.resume,
+      jobTitle: job.title,
+      company: job.company,
+      jobDescription: job.description
+    });
     const parsed = extractJSON(text);
     state.tailored[jobId] = parsed;
     await persist();
@@ -416,23 +380,15 @@ document.getElementById('prepGenBtn').addEventListener('click', async () => {
   const job = state.jobs.find(j => j.id === jobId);
   const statusEl = document.getElementById('prepStatus');
   if(!job) return;
-  if(!localStorage.getItem(API_KEY_STORAGE_KEY)){
-    statusEl.innerHTML = '<span class="error-text">Add your AI API key first — go to <a onclick="switchStage(\'overview\')">Overview → Settings</a>.</span>';
-    showToast('No API key set yet.', 'error');
-    return;
-  }
   statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Building interview prep...</div>';
   document.getElementById('prepGenBtn').disabled = true;
   try{
-    const prompt = 'You are a career coach preparing a candidate for an interview.\\n\\n' +
-      'JOB (' + job.title + ' at ' + job.company + '):\\n' + job.description.slice(0, 4000) + '\\n\\n' +
-      (state.resume ? 'CANDIDATE RESUME:\\n' + state.resume.slice(0, 3000) + '\\n\\n' : '') +
-      'Respond with ONLY valid JSON, no preamble, in this exact shape:\\n' +
-      '{"talkingPoints": ["<thing to know or mention about this company/role/industry>", "..."], ' +
-      '"questions": [{"q": "<likely interview question>", "why": "<what the interviewer is really assessing>", "tip": "<one-line STAR-format answering tip>"}], ' +
-      '"questionsToAsk": ["<good question the candidate could ask the interviewer>", "..."]}\\n' +
-      'Give 4-5 talking points, 6 questions covering a mix of behavioral and role-specific technical questions, and 4 questions to ask.';
-    const text = await callClaude(prompt, 1000);
+    const text = await callApi('prep', {
+      resume: state.resume,
+      jobTitle: job.title,
+      company: job.company,
+      jobDescription: job.description
+    });
     const parsed = extractJSON(text);
     state.preps[jobId] = parsed;
     await persist();
@@ -482,9 +438,7 @@ async function getFeedback(i, jobId){
   const question = prep.questions[i].q;
   fbEl.innerHTML = '<div class="loading"><span class="dot"></span> Reviewing your answer...</div>';
   try{
-    const prompt = 'Interview question: "' + question + '"\\n\\nCandidate answer:\\n' + answer.slice(0, 2000) +
-      '\\n\\nGive brief, direct feedback (3-5 sentences) on how well this answer follows the STAR format (Situation, Task, Action, Result) and how convincing it is. Suggest one concrete improvement. Plain text only, no JSON, no markdown headers.';
-    const text = await callClaude(prompt, 400);
+    const text = await callApi('feedback', { question: question, answer: answer });
     fbEl.innerHTML = '<p style="color:var(--muted);">' + escapeHtml(text.trim()) + '</p>';
   }catch(e){
     fbEl.innerHTML = '<span class="error-text">' + escapeHtml(apiErrorMessage(e)) + '</span>';

@@ -52,16 +52,6 @@
         <h2>Overview</h2>
         <p>Where your search stands right now, end to end.</p>
       </div>
-      <div class="card">
-        <h3>Settings</h3>
-        <label for="apiKeyInput">AI API key (used for Match &amp; tailor and Prepare)</label>
-        <div class="row" style="align-items:flex-start;">
-          <input type="text" id="apiKeyInput" placeholder="sk-...">
-          <button class="btn secondary" id="saveApiKeyBtn" style="flex:none;">Save key</button>
-        </div>
-        <div class="note">Stored only in this browser's local storage, sent only directly to the AI provider's API when you use Match &amp; tailor or Prepare. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get an API key here</a>. This calls the API directly from your browser — fine for personal use, not something to deploy for other people to use with your key.</div>
-        <div id="apiKeyStatus" class="note"></div>
-      </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-num" id="ovResumeStat">—</div><div class="stat-lbl">ATS readiness</div></div>
         <div class="stat-card"><div class="stat-num" id="ovJobsStat">0</div><div class="stat-lbl">Jobs in pipeline</div></div>

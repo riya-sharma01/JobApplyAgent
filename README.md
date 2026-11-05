@@ -2,9 +2,9 @@
 
 A small static website for running your job search: resume upload + ATS readiness
 checking, job scouting, AI-assisted resume tailoring per job, interview prep with
-practice feedback, application tracking, and full data export/import. No backend,
-no build step, no framework — plain HTML, CSS, and JavaScript, calling the Anthropic
-API and a public job board directly from the browser.
+practice feedback, application tracking, and full data export/import. The site is plain
+HTML, CSS and JavaScript with no build step; the one server-side piece is a ~100-line
+serverless proxy (`proxy/`) that keeps the LLM API key out of the browser.
 
 ## Files
 
@@ -14,7 +14,10 @@ jobapplyagent-site/
 ├── css/styles.css      all styling (light + dark theme)
 ├── js/app.js           all behavior
 ├── favicon.svg         icon (also used as the sidebar logo)
-├── .github/workflows/  GitHub Pages auto-deploy
+├── proxy/              serverless function that holds the API key (deployed separately)
+│   ├── api/chat.js
+│   └── test/chat.test.js
+├── .github/workflows/  GitHub Pages deploy (manual trigger)
 ├── LICENSE
 └── README.md
 ```
@@ -49,27 +52,36 @@ python3 -m http.server 8000
 ```
 Then open `http://localhost:8000`.
 
-## Setting up AI features
+## Setting up the AI proxy
 
-Match & tailor and Prepare call the Anthropic API directly from your browser. Since this
-is a static site with no server, you supply your own API key:
+Match & tailor and Prepare need an LLM. The browser never sees an API key: it sends
+`{task, resume, job...}` to the proxy, and the proxy builds the prompt and makes the call.
+Because the prompts live on the server, the endpoint can't be used as a general chatbot.
 
-1. Get a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
-2. Open the site → **Overview → Settings**, paste the key, save.
+1. Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys)
+   and **set a monthly spend limit on it**. That limit is your real backstop.
+2. Deploy `proxy/` to Vercel: import this repo and set **Root Directory** to `proxy`.
+   Environment variables:
+   - `ANTHROPIC_API_KEY` (required)
+   - `ALLOWED_ORIGINS` (optional, comma-separated; defaults to
+     `https://riya-sharma01.github.io,http://localhost:8000`)
+   - `MODEL` (optional)
+3. Copy the deployed URL (`https://<project>.vercel.app/api/chat`) into `PROXY_URL` at
+   the top of `js/app.js`, commit, and deploy the site.
 
-The key is stored only in your browser's local storage and sent only to
-`api.anthropic.com`, using Anthropic's `anthropic-dangerous-direct-browser-access`
-header. Two things worth knowing:
+Local development: run `vercel dev` inside `proxy/`, set `PROXY_URL` to
+`http://localhost:3000/api/chat`, and serve the site on port 8000.
 
-- This is intended for personal/local use. Don't publish a link to a live deployment
-  with your key already saved in that browser profile — anyone with dev tools open on
-  that machine could read it from local storage. Each visitor needs to add their own key.
-- Anthropic API usage is billed per token on your account (prompts here are short, so
-  cost per action is small, but it isn't free).
+What the proxy does and doesn't protect against:
 
-The proper production fix is a tiny backend (even a single serverless function) that
-holds the key server-side and proxies requests, so no key ever touches the browser.
-That's a natural "v2" if you want to keep building this out.
+- CORS allowlist: other websites can't call it from a browser. It does **not** stop
+  someone using curl, since the `Origin` header can be faked.
+- Rate limit: 20 requests per IP per 10 minutes, kept in memory. It's best-effort,
+  because serverless instances restart and reset the counter.
+- Size caps on every field, a fixed model, and a fixed `max_tokens` per task.
+- It never logs prompts, since they contain resumes.
+
+Tests: `cd proxy && npm test` (Node's built-in runner, no dependencies).
 
 ## What's real vs. what's a heuristic
 
@@ -85,25 +97,10 @@ That's a natural "v2" if you want to keep building this out.
 ## Data & privacy
 
 Everything you enter is stored in your browser's local storage under the key
-`jobapplyagent-data` — nothing is sent anywhere except Arbeitnow (search) and Anthropic (AI
-features). Clearing browser data erases it; export a backup first if that matters to you.
-
-## Putting this on a resume/portfolio
-
-If you're listing this as a project, a few honest framings that hold up under a
-follow-up question in an interview:
-
-> Built and deployed a client-side career-management web app (vanilla JS, no framework)
-> that parses resumes (PDF/DOCX via pdf.js/mammoth.js), runs a rules-based ATS-readiness
-> checker, integrates the Anthropic API for resume-job matching and interview-question
-> generation, and persists user data via localStorage with JSON export/import.
-
-Worth being ready to explain if asked: why no framework (deliberate — a small enough
-surface area that vanilla JS keeps it dependency-free and easy to audit), the tradeoff
-of calling the Anthropic API directly from the browser vs. a backend proxy (documented
-above — you made a real engineering tradeoff and know its limits), and what the ATS
-checker can and can't detect (also documented above). Being able to name the limitations
-of your own project unprompted is a stronger signal than pretending it has none.
+`jobapplyagent-data`. Job search queries go to Arbeitnow. When you use Match & tailor or
+Prepare, your resume text and the job description go to the proxy and on to the LLM
+provider; the proxy doesn't store them. Clearing browser data erases your data, so export
+a backup first if that matters to you.
 
 ## License
 
