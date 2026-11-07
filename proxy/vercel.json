@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/chat.js": { "maxDuration": 30 }
+    "api/chat.js": { "maxDuration": 30 },
+    "api/jobs.js": { "maxDuration": 30 }
   }
 }

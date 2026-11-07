@@ -99,11 +99,21 @@
       <div class="card">
         <h3>Search live listings</h3>
         <div class="row">
-          <div class="field"><label for="searchKeyword">Keyword</label><input type="text" id="searchKeyword" placeholder="e.g. product designer"></div>
-          <div class="field"><label for="searchLocation">Location contains (optional)</label><input type="text" id="searchLocation" placeholder="e.g. remote, London"></div>
+          <div class="field"><label for="searchSource">Where to search</label>
+            <select id="searchSource">
+              <option value="arbeitnow">Open board — Europe &amp; remote tech</option>
+              <option value="adzuna">Adzuna — India &amp; worldwide</option>
+              <option value="company">One company's careers page</option>
+            </select>
+          </div>
+          <div class="field" id="companyField" style="display:none;"><label for="searchCompany">Company</label><input type="text" id="searchCompany" placeholder="e.g. stripe"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="searchKeyword">Keyword</label><input type="text" id="searchKeyword" placeholder="e.g. SDE, backend developer, intern"></div>
+          <div class="field"><label for="searchLocation">Location contains (optional)</label><input type="text" id="searchLocation" placeholder="e.g. remote, Bengaluru"></div>
         </div>
         <button class="btn" id="searchJobsBtn">Search</button>
-        <div class="note">Pulls from Arbeitnow's open job board (mostly tech &amp; remote roles). For LinkedIn or a specific company, add the listing manually below.</div>
+        <div class="note" id="sourceHint"></div>
         <div id="searchStatus" style="margin-top:12px;"></div>
         <div id="searchResults" style="margin-top:12px;"></div>
       </div>

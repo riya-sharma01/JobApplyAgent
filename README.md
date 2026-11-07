@@ -15,8 +15,10 @@ jobapplyagent-site/
 ├── js/app.js           all behavior
 ├── favicon.svg         icon (also used as the sidebar logo)
 ├── proxy/              serverless function that holds the API key (deployed separately)
-│   ├── api/chat.js
-│   └── test/chat.test.js
+│   ├── api/chat.js     AI calls (match, prep, feedback)
+│   ├── api/jobs.js     job search (Arbeitnow, Adzuna, company boards)
+│   ├── lib/common.js   CORS + rate limiting shared by both
+│   └── test/           tests for both endpoints
 ├── .github/workflows/  GitHub Pages deploy (manual trigger)
 ├── LICENSE
 └── README.md
@@ -27,7 +29,8 @@ jobapplyagent-site/
 - **Resume** — upload a .pdf/.docx/.txt or paste text; extracted client-side (pdf.js,
   mammoth.js). Runs a real heuristic ATS-readiness check (contact info, section headers,
   length, bullet usage, unusual characters) and scores it.
-- **Scout** — live search against Arbeitnow's open job board, or add any listing
+- **Scout** — live search across three sources (an open Europe/remote board, Adzuna for
+  India and worldwide, or one company's Greenhouse/Lever careers page), or add any listing
   (LinkedIn, a company careers page, anywhere) by hand.
 - **Match & tailor** — Claude compares your resume against a saved job: match score,
   strengths, gaps, a tailored summary, and bullets to add — copyable or downloadable.
@@ -42,9 +45,11 @@ jobapplyagent-site/
 
 **GitHub Pages** (what this repo is set up for)
 1. Push this folder to a GitHub repo.
-2. Repo Settings → Pages → Source → "GitHub Actions". The included workflow
-   (`.github/workflows/deploy.yml`) deploys automatically on every push to `main`.
-3. Your site is live at `https://<username>.github.io/<repo-name>/`.
+2. Repo Settings → Pages → Source → "GitHub Actions".
+3. To publish, go to the Actions tab → "Deploy to GitHub Pages" → Run workflow. It is
+   manual on purpose, so pushing code never changes the live site by itself. It publishes
+   only `index.html`, `css/`, `js/` and `favicon.svg`.
+4. Your site is live at `https://<username>.github.io/<repo-name>/`.
 
 **Local, no deployment**
 ```
@@ -64,8 +69,11 @@ Because the prompts live on the server, the endpoint can't be used as a general 
    Environment variables:
    - `ANTHROPIC_API_KEY` (required)
    - `ALLOWED_ORIGINS` (optional, comma-separated; defaults to
-     `https://riya-sharma01.github.io,http://localhost:8000`)
+     `https://riya-sharma01.github.io`, plus `http://localhost:8000` outside production)
    - `MODEL` (optional)
+   - `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` (optional; free keys from
+     [developer.adzuna.com](https://developer.adzuna.com). Without them the Adzuna source
+     shows "not switched on" and the other two sources still work.)
 3. Copy the deployed URL (`https://<project>.vercel.app/api/chat`) into `PROXY_URL` at
    the top of `js/app.js`, commit, and deploy the site.
 
@@ -85,8 +93,11 @@ Tests: `cd proxy && npm test` (Node's built-in runner, no dependencies).
 
 ## What's real vs. what's a heuristic
 
-- **Job search** pulls live from Arbeitnow's open job board (free, no key) — a small,
-  mostly tech/remote board, not LinkedIn or Indeed. Add anything else manually.
+- **Job search** runs through the proxy. Arbeitnow (reads 3 pages) is Europe-heavy and
+  remote tech. Adzuna covers India but returns only a short description preview. The
+  company option reads public Greenhouse/Lever boards, so it can't search companies with
+  their own career systems (Google, Amazon, Meta). None of this covers LinkedIn or Indeed:
+  add those listings manually.
 - **ATS readiness check** runs real checks against extracted text. It can't see the
   original file's layout — a two-column PDF or one with text boxes can still break a
   real ATS even if the extracted text passes every check here.
@@ -97,7 +108,7 @@ Tests: `cd proxy && npm test` (Node's built-in runner, no dependencies).
 ## Data & privacy
 
 Everything you enter is stored in your browser's local storage under the key
-`jobapplyagent-data`. Job search queries go to Arbeitnow. When you use Match & tailor or
+`jobapplyagent-data`. Job search terms go to the proxy and on to the job source you picked. When you use Match & tailor or
 Prepare, your resume text and the job description go to the proxy and on to the LLM
 provider; the proxy doesn't store them. Clearing browser data erases your data, so export
 a backup first if that matters to you.

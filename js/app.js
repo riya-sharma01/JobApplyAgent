@@ -213,59 +213,121 @@ function renderATSCard(){
 }
 
 // ---------- SCOUT: live search ----------
-document.getElementById('searchJobsBtn').addEventListener('click', async () => {
-  const keyword = document.getElementById('searchKeyword').value.trim().toLowerCase();
-  const location = document.getElementById('searchLocation').value.trim().toLowerCase();
+// All job sources go through the proxy, which cleans and matches the listings.
+const JOBS_URL = PROXY_URL.replace(/\/chat$/, '/jobs');
+let lastResults = [];
+
+const SOURCE_HINTS = {
+  arbeitnow: 'Mostly Europe-based and remote tech roles. Good for remote work, thin for India.',
+  adzuna: 'Wider listings, including India. It only gives a short preview, so open the posting and paste the full description before using Match & tailor.',
+  company: 'Type the name exactly as it appears in the careers URL (boards.greenhouse.io/NAME or jobs.lever.co/NAME). Companies with their own career systems, such as Google or Amazon, cannot be searched this way.'
+};
+
+const SEARCH_ERRORS = {
+  NOT_CONFIGURED: 'The proxy URL is not set yet. Set PROXY_URL at the top of js/app.js (see the README).',
+  NETWORK: 'Could not reach the job service. Check your connection and try again.',
+  rate_limited: 'Too many searches from your network just now. Wait a few minutes and try again.',
+  source_not_configured: 'This source is not switched on for this site yet.',
+  source_unavailable: 'That job source did not answer. Try again in a minute, or pick another source.',
+  company_not_found: 'No Greenhouse or Lever board found with that name. Check the spelling against the company\'s careers URL.',
+  bad_company: 'Use only letters, numbers and hyphens for the company name.',
+  forbidden_origin: 'This site is not allowed to use the proxy. Add its address to ALLOWED_ORIGINS on the server.'
+};
+
+function safeUrl(u){
+  try{
+    const parsed = new URL(u);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') ? parsed.href : '';
+  }catch(e){
+    return '';
+  }
+}
+
+function updateSourceUI(){
+  const source = document.getElementById('searchSource').value;
+  document.getElementById('companyField').style.display = source === 'company' ? '' : 'none';
+  document.getElementById('sourceHint').textContent = SOURCE_HINTS[source] || '';
+}
+document.getElementById('searchSource').addEventListener('change', updateSourceUI);
+updateSourceUI();
+
+function renderSearchResults(){
+  document.getElementById('searchResults').innerHTML = lastResults.map((j, i) => {
+    const desc = (j.description || '').replace(/\s+/g, ' ').slice(0, 220);
+    const link = safeUrl(j.url);
+    return '<div class="job-item">' +
+      '<div class="top"><div><div class="title">' + escapeHtml(j.title) + '</div>' +
+      '<div class="company">' + escapeHtml(j.company) + (j.location ? ' · ' + escapeHtml(j.location) : '') + ' · ' + escapeHtml(j.source) + '</div></div>' +
+      '<button class="btn small" onclick="addSearchResult(' + i + ')">Add to pipeline</button></div>' +
+      '<div class="desc">' + escapeHtml(desc) + (desc.length >= 220 ? '...' : '') + '</div>' +
+      (link ? '<div style="margin-top:8px; font-size:12.5px;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">View posting</a></div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+async function searchJobs(){
+  const source = document.getElementById('searchSource').value;
+  const keyword = document.getElementById('searchKeyword').value.trim();
+  const location = document.getElementById('searchLocation').value.trim();
+  const company = document.getElementById('searchCompany').value.trim();
   const statusEl = document.getElementById('searchStatus');
   const resultsEl = document.getElementById('searchResults');
-  resultsEl.innerHTML = '';
-  statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Searching open listings...</div>';
-  try{
-    const res = await fetch('https://arbeitnow.com/api/job-board-api');
-    if(!res.ok) throw new Error('bad status');
-    const data = await res.json();
-    let jobs = data.data || [];
-    if(keyword){
-      jobs = jobs.filter(j =>
-        (j.title || '').toLowerCase().includes(keyword) ||
-        (j.description || '').toLowerCase().includes(keyword) ||
-        (j.tags || []).some(t => t.toLowerCase().includes(keyword))
-      );
-    }
-    if(location){
-      jobs = jobs.filter(j => (j.location || '').toLowerCase().includes(location) || (location.includes('remote') && j.remote));
-    }
-    jobs = jobs.slice(0, 12);
-    statusEl.innerHTML = jobs.length
-      ? ('Found ' + jobs.length + ' listing(s).')
-      : 'No matches in the open board — try broader terms, or add a job manually below.';
-    resultsEl.innerHTML = jobs.map(j => {
-      const desc = (j.description || '').replace(/<[^>]+>/g, ' ').slice(0, 220);
-      const payload = encodeURIComponent(JSON.stringify(j));
-      return '<div class="job-item">' +
-        '<div class="top"><div><div class="title">' + escapeHtml(j.title) + '</div>' +
-        '<div class="company">' + escapeHtml(j.company_name) + (j.location ? ' · ' + escapeHtml(j.location) : '') + '</div></div>' +
-        '<button class="btn small" onclick="addSearchResult(\'' + payload + '\')">Add to pipeline</button></div>' +
-        '<div class="desc">' + escapeHtml(desc) + '...</div>' +
-        '<div class="tags">' + (j.tags || []).slice(0, 5).map(t => '<span class="tag">' + escapeHtml(t) + '</span>').join('') + '</div>' +
-        '</div>';
-    }).join('');
-  }catch(e){
-    statusEl.innerHTML = '<div class="error-text">Couldn\'t reach the live job board right now. Add a job manually below instead.</div>';
-  }
-});
+  const btn = document.getElementById('searchJobsBtn');
 
-async function addSearchResult(payload){
-  const j = JSON.parse(decodeURIComponent(payload));
-  const desc = (j.description || '').replace(/<[^>]+>/g, ' ').trim();
+  if(source === 'company' && !company){
+    statusEl.innerHTML = '<span class="error-text">Type a company name first.</span>';
+    return;
+  }
+  lastResults = [];
+  resultsEl.innerHTML = '';
+  statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Searching...</div>';
+  btn.disabled = true;
+  try{
+    if(PROXY_URL.includes('YOUR-PROXY')) throw new Error('NOT_CONFIGURED');
+    const params = new URLSearchParams({ source: source, q: keyword, location: location });
+    if(source === 'company') params.set('company', company);
+    let response;
+    try{
+      response = await fetch(JOBS_URL + '?' + params);
+    }catch(e){
+      throw new Error('NETWORK');
+    }
+    let data = null;
+    try{ data = await response.json(); }catch(e){ data = null; }
+    if(!response.ok) throw new Error((data && data.error) || 'API_ERROR');
+
+    lastResults = Array.isArray(data.jobs) ? data.jobs : [];
+    if(lastResults.length){
+      statusEl.textContent = 'Showing ' + lastResults.length + (data.matched > lastResults.length ? ' of ' + data.matched : '') +
+        ' matches from ' + data.scanned + ' listings.' + (data.note ? ' ' + data.note : '');
+      renderSearchResults();
+    } else {
+      statusEl.textContent = 'Nothing matched in ' + data.scanned + ' listings. Try fewer or simpler words' +
+        (source === 'arbeitnow' ? ', or switch to Adzuna or a company page, since this board is mostly Europe and remote tech.' : '.');
+    }
+  }catch(e){
+    statusEl.innerHTML = '<span class="error-text">' + escapeHtml(SEARCH_ERRORS[e && e.message] || 'Search failed. Try again.') + '</span>';
+  }finally{
+    btn.disabled = false;
+  }
+}
+document.getElementById('searchJobsBtn').addEventListener('click', searchJobs);
+
+async function addSearchResult(i){
+  const j = lastResults[Number(i)];
+  if(!j) return;
+  const exists = state.jobs.some(x => (j.url && x.url === safeUrl(j.url)) || (x.title === j.title && x.company === j.company));
+  if(exists){
+    showToast('Already in your pipeline.', 'error');
+    return;
+  }
   state.jobs.push({
-    id: uid(), title: j.title, company: j.company_name, location: j.location || (j.remote ? 'Remote' : ''),
-    url: j.url || '', description: desc, source: 'Arbeitnow', status: 'Saved'
+    id: uid(), title: j.title, company: j.company, location: j.location || '',
+    url: safeUrl(j.url), description: j.description || '', source: j.source || 'Search', status: 'Saved'
   });
   await persist();
   render();
-  const statusEl = document.getElementById('searchStatus');
-  statusEl.innerHTML = 'Added "' + escapeHtml(j.title) + '" to your pipeline.';
+  showToast('"' + j.title + '" added to your pipeline.', 'success');
 }
 
 // ---------- SCOUT: manual add ----------

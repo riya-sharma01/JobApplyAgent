@@ -5,15 +5,10 @@
 // The browser sends { task, ...fields }; the prompts are built here, so this
 // endpoint can't be used as a general-purpose chatbot.
 
-const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'https://riya-sharma01.github.io,http://localhost:8000')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const { applyCors, makeLimiter, clientIp } = require('../lib/common');
 
-const RATE_LIMIT = 20; // requests per IP...
-const WINDOW_MS = 10 * 60 * 1000; // ...per 10 minutes
-const hits = new Map();
+const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
+const limiter = makeLimiter(20, 10 * 60 * 1000); // 20 AI requests per IP per 10 minutes
 
 function clip(value, max) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -91,43 +86,14 @@ const TASKS = {
   },
 };
 
-function rateLimited(ip, now = Date.now()) {
-  const recent = (hits.get(ip) || []).filter((t) => now - t < WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) {
-    hits.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) {
-    for (const [key, times] of hits) {
-      if (!times.some((t) => now - t < WINDOW_MS)) hits.delete(key);
-    }
-  }
-  return false;
-}
-
 async function handler(req, res) {
-  const origin = req.headers.origin;
-  const allowed = Boolean(origin) && ALLOWED_ORIGINS.includes(origin);
-
-  if (allowed) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  }
+  const allowed = applyCors(req, res, 'POST, OPTIONS');
 
   if (req.method === 'OPTIONS') return res.status(allowed ? 204 : 403).end();
   if (!allowed) return res.status(403).json({ error: 'forbidden_origin' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'server_not_configured' });
-
-  const ip =
-    String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-    (req.socket && req.socket.remoteAddress) ||
-    'unknown';
-  if (rateLimited(ip)) return res.status(429).json({ error: 'rate_limited' });
+  if (limiter.check(clientIp(req))) return res.status(429).json({ error: 'rate_limited' });
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const task = Object.prototype.hasOwnProperty.call(TASKS, body.task) ? TASKS[body.task] : null;
@@ -168,5 +134,5 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._hits = hits;
+module.exports._hits = limiter.hits;
 module.exports._TASKS = TASKS;
