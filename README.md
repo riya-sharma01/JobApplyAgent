@@ -12,7 +12,9 @@ serverless proxy (`proxy/`) that keeps the LLM API key out of the browser.
 jobapplyagent-site/
 ├── index.html          structure
 ├── css/styles.css      all styling (light + dark theme)
-├── js/app.js           all behavior
+├── js/app.js           page behavior
+├── js/ats.js           resume text extraction + ATS checker (no page dependencies)
+├── test/ats.test.js    tests for ats.js
 ├── favicon.svg         icon (also used as the sidebar logo)
 ├── proxy/              serverless function that holds the API key (deployed separately)
 │   ├── api/chat.js     AI calls (match, prep, feedback)
@@ -56,6 +58,13 @@ jobapplyagent-site/
 python3 -m http.server 8000
 ```
 Then open `http://localhost:8000`.
+
+## Tests
+
+```
+node --test test/ats.test.js     # resume extraction + ATS checker
+cd proxy && npm test             # proxy endpoints
+```
 
 ## Setting up the AI proxy
 

@@ -1,6 +1,7 @@
 if(window['pdfjsLib']){
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
+const { checkATS, itemsToText, htmlToPlain, normalizeText } = window.AtsTools;
 let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null };
 const STORAGE_KEY = 'jobapplyagent-data';
 // Set this to your deployed proxy's URL (see README: "Setting up the AI proxy").
@@ -120,8 +121,8 @@ document.getElementById('resumeFile').addEventListener('change', async (e) => {
       text = await file.text();
     } else if(ext === 'docx'){
       const buf = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer: buf });
-      text = result.value;
+      const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+      text = htmlToPlain(result.value);
     } else if(ext === 'pdf'){
       const buf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -129,13 +130,13 @@ document.getElementById('resumeFile').addEventListener('change', async (e) => {
       for(let p = 1; p <= pdf.numPages; p++){
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        pages.push(content.items.map(it => it.str).join(' '));
+        pages.push(itemsToText(content.items));
       }
       text = pages.join('\n\n');
     } else {
       throw new Error('unsupported file type');
     }
-    text = text.trim();
+    text = normalizeText(text).trim();
     if(text.length < 30){
       statusEl.innerHTML = '<span class="error-text">Barely any text came out of that file — it may be a scanned or image-based PDF, which most ATS systems also can\'t read. Try pasting the text directly instead.</span>';
       return;
@@ -158,44 +159,6 @@ document.getElementById('saveResumeBtn').addEventListener('click', async () => {
   renderATSCard();
   renderOverview();
 });
-
-function checkATS(text){
-  const items = [];
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const wordCount = words.length;
-
-  const hasEmail = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(text);
-  items.push({ label: 'Email address found', pass: hasEmail,
-    note: hasEmail ? 'ATS can extract your contact info.' : 'No email detected — ATS contact-parsing may fail. Add one near the top.' });
-
-  const hasPhone = /(\+?\d[\d\-\.\s]{8,}\d)/.test(text);
-  items.push({ label: 'Phone number found', pass: hasPhone,
-    note: hasPhone ? 'Phone number is parseable.' : 'No phone number detected in a standard format.' });
-
-  const sectionWords = ['experience','education','skills','projects','summary','objective','certifications'];
-  const lower = text.toLowerCase();
-  const foundSections = sectionWords.filter(w => lower.includes(w));
-  items.push({ label: 'Standard section headers', pass: foundSections.length >= 3,
-    note: foundSections.length >= 3
-      ? ('Found: ' + foundSections.join(', ') + '.')
-      : 'Fewer than 3 standard section headers found (Experience, Education, Skills...). ATS relies on these to categorize content.' });
-
-  const lengthOk = wordCount >= 150 && wordCount <= 1100;
-  items.push({ label: 'Resume length', pass: lengthOk,
-    note: wordCount + ' words — ' + (wordCount < 150 ? 'seems thin for ATS keyword matching.' : wordCount > 1100 ? 'quite long; consider trimming to 1-2 pages.' : 'a reasonable 1-2 page range.') });
-
-  const bulletChars = (text.match(/^[\s]*[•\-\*▪◦][\s]/gm) || []).length;
-  items.push({ label: 'Bullet points detected', pass: bulletChars >= 3,
-    note: bulletChars >= 3 ? (bulletChars + ' bullet lines found — good for scannability.') : 'Few or no bullet points found. ATS and recruiters both scan bullets faster than paragraphs.' });
-
-  const weirdChars = (text.match(/[^\x00-\x7F]/g) || []).filter(c => !',.\'’‘“”–—°'.includes(c));
-  items.push({ label: 'No unusual symbols', pass: weirdChars.length < 5,
-    note: weirdChars.length < 5 ? 'Clean character set.' : (weirdChars.length + ' unusual/non-standard characters found — icons or special glyphs can break ATS parsing.') });
-
-  const passCount = items.filter(i => i.pass).length;
-  const score = Math.round((passCount / items.length) * 100);
-  return { score, items, checkedAt: Date.now() };
-}
 
 function renderATSCard(){
   const el = document.getElementById('atsCard');
