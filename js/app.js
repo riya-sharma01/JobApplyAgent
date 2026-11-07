@@ -2,6 +2,7 @@ if(window['pdfjsLib']){
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 const { checkATS, itemsToText, htmlToPlain, normalizeText } = window.AtsTools;
+const { analyzeResume } = window.ResumeTools;
 let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null };
 const STORAGE_KEY = 'jobapplyagent-data';
 // Set this to your deployed proxy's URL (see README: "Setting up the AI proxy").
@@ -157,22 +158,70 @@ document.getElementById('saveResumeBtn').addEventListener('click', async () => {
   showToast('Resume saved and checked.', 'success');
   setTimeout(() => note.textContent = '', 2000);
   renderATSCard();
+  renderReview();
   renderOverview();
 });
+
+function atsCounts(ats){
+  const items = (ats && ats.items) || [];
+  return { passed: items.filter(i => i.pass).length, total: items.length };
+}
 
 function renderATSCard(){
   const el = document.getElementById('atsCard');
   const ats = state.resumeATS;
   if(!ats){ el.innerHTML = ''; return; }
+  const c = atsCounts(ats);
   el.innerHTML =
     '<div class="card">' +
-      '<div class="score-ring"><span class="num">' + ats.score + '</span><span class="lbl">/ 100 ATS readiness</span></div>' +
-      ats.items.map(i =>
+      '<h3>Basic ATS checks</h3>' +
+      '<div class="score-ring"><span class="num">' + c.passed + '/' + c.total + '</span><span class="lbl">checks passed</span></div>' +
+      (ats.items || []).map(i =>
         '<div class="ats-row"><span class="ats-icon ' + (i.pass ? 'pass' : 'warn') + '">' + (i.pass ? '\u2713' : '!') + '</span>' +
         '<div class="body"><div class="lbl">' + escapeHtml(i.label) + '</div><div class="note-text">' + escapeHtml(i.note) + '</div></div></div>'
       ).join('') +
-      '<div class="note">This checks structure and content signals we can read from extracted text. It can\'t detect multi-column layouts or embedded images in the original file — for those, keep the file itself to a single column with no text boxes or graphics.</div>' +
+      '<div class="note">These are text and format basics, not a guarantee. They do not check how well you match a specific job, and they cannot see multi-column layouts, tables or images in the original file. For that, keep the file to a single column with no text boxes or graphics.</div>' +
     '</div>';
+}
+
+// ---------- RESUME REVIEW ----------
+function renderReview(){
+  const el = document.getElementById('reviewCard');
+  if(!state.resume){ el.innerHTML = ''; return; }
+  const r = analyzeResume(state.resume);
+  const p = r.parsed;
+  const yes = '<span class="ats-icon pass">\u2713</span>';
+  const no = '<span class="ats-icon warn">!</span>';
+  const chip = (label, ok) => '<span class="tag" style="margin-right:6px;">' + (ok ? '\u2713 ' : '\u2013 ') + escapeHtml(label) + '</span>';
+  const sectionRows = p.sections.filter(s => s.key !== 'header').map(s =>
+    '<div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--line); font-size:13.5px;"><span>' +
+    escapeHtml(s.title) + '</span><span style="color:var(--muted);">' + (s.bullets.length ? s.bullets.length + ' bullets' : s.lines.length + ' lines') + '</span></div>'
+  ).join('');
+  let html =
+    '<div class="card">' +
+      '<h3>How your resume was read</h3>' +
+      '<div class="note" style="margin-top:0;">This is what a parser can pull out of your text. If something is missing here, an ATS probably misses it too.</div>' +
+      '<div style="margin:12px 0;">' + chip('Email', !!p.contact.email) + chip('Phone', p.contact.phone) + chip('LinkedIn', !!p.contact.linkedin) +
+        chip('GitHub', !!p.contact.github) + chip('Portfolio link', !!p.contact.portfolio) + '</div>' +
+      '<div style="margin-bottom:12px;">' + (sectionRows || '<span class="note">No section headings were found.</span>') + '</div>' +
+      '<div class="lbl" style="font-size:12.5px; color:var(--muted); margin-bottom:6px;">Skills detected (' + p.skills.length + ')</div>' +
+      '<div class="tags" style="display:flex; gap:6px; flex-wrap:wrap;">' +
+        (p.skills.slice(0, 24).map(k => '<span class="tag">' + escapeHtml(k) + '</span>').join('') || '<span class="note">None found. Add a Skills section with comma-separated skills.</span>') +
+      '</div>' +
+    '</div>';
+  html += r.categories.map(cat => {
+    const passed = cat.checks.filter(k => k.pass).length;
+    return '<div class="card"><h3>' + escapeHtml(cat.title) + ' <span style="font-family:inherit; font-weight:400; font-size:12.5px; color:var(--muted);">' + passed + ' of ' + cat.checks.length + ' checks passed</span></h3>' +
+      cat.checks.map(k =>
+        '<div class="ats-row">' + (k.pass ? yes : no) + '<div class="body"><div class="lbl">' + escapeHtml(k.label) + '</div>' +
+        '<div class="note-text">' + escapeHtml(k.note) + '</div>' +
+        (!k.pass && k.examples.length ? '<ul class="plain" style="margin-top:8px;">' + k.examples.map(e =>
+          '<li style="font-size:12.5px;">' + escapeHtml(e.text) + (e.hint ? '<div style="color:var(--ember);">' + escapeHtml(e.hint) + '</div>' : '') + '</li>').join('') + '</ul>' : '') +
+        '</div></div>').join('') +
+    '</div>';
+  }).join('');
+  html += '<div class="note">These checks are rule-based and look at wording and structure only. They cannot judge whether your experience is strong, and a clean pass is not a promise of interviews.</div>';
+  el.innerHTML = html;
 }
 
 // ---------- SCOUT: live search ----------
@@ -488,11 +537,11 @@ async function removeJob(jobId){
 function renderOverview(){
   const tailoredCount = Object.keys(state.tailored).length;
   const prepCount = Object.keys(state.preps).length;
-  document.getElementById('ovResumeStat').textContent = state.resumeATS ? state.resumeATS.score + '%' : '—';
+  document.getElementById('ovResumeStat').textContent = state.resumeATS ? atsCounts(state.resumeATS).passed + '/' + atsCounts(state.resumeATS).total : '—';
   document.getElementById('ovJobsStat').textContent = state.jobs.length;
   document.getElementById('ovTailoredStat').textContent = tailoredCount;
   document.getElementById('ovPrepStat').textContent = prepCount;
-  document.getElementById('countAts').textContent = state.resumeATS ? state.resumeATS.score + '%' : '—';
+  document.getElementById('countAts').textContent = state.resumeATS ? atsCounts(state.resumeATS).passed + '/' + atsCounts(state.resumeATS).total : '—';
 
   const statuses = ['Saved','Applied','Interviewing','Offer','Rejected'];
   const counts = {}; statuses.forEach(s => counts[s] = 0);
@@ -508,7 +557,7 @@ function renderOverview(){
   if(!state.resume){
     next = 'Add your resume in Stage 1 — everything else depends on it.';
   } else if(state.resumeATS && state.resumeATS.score < 70){
-    next = 'Your resume\'s ATS readiness is under 70% — fix the flagged issues in Stage 1 before applying widely.';
+    next = 'Some basic ATS checks on your resume failed. Fix the flagged items in Stage 1 before applying widely.';
   } else if(state.jobs.length === 0){
     next = 'Scout or manually add a job in Stage 2 to start matching against your resume.';
   } else if(tailoredCount < state.jobs.length){
@@ -557,6 +606,7 @@ function render(){
   document.getElementById('countJobs').textContent = state.jobs.length;
   document.getElementById('resumeInput').value = state.resume;
   renderATSCard();
+  renderReview();
   renderOverview();
 
   const hasJobs = state.jobs.length > 0;
