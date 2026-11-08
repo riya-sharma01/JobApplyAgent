@@ -1,7 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseResume, analyzeResume, matchSection } = require('../js/resume.js');
+const { parseResume, analyzeResume, matchSection, scoreResume, normalizeReview, textHash } = require('../js/resume.js');
+const { checkATS } = require('../js/ats.js');
 
 // Plain-text version of a real fresher resume, shaped like the PDF extraction output.
 const GOOD = `Riya Sharma
@@ -155,4 +156,80 @@ test('junk and empty input do not throw', () => {
   const r = analyzeResume('');
   assert.strictEqual(r.parsed.bullets.length, 0);
   assert.ok(!check(r, 'sections').pass);
+});
+
+// ---------- score ----------
+
+const score = (text) => scoreResume(analyzeResume(text), checkATS(text));
+
+test('score: a strong resume scores high, a weak one low, and the gap is large', () => {
+  const good = score(GOOD);
+  const weak = score(WEAK);
+  assert.ok(good.overall >= 85 && good.overall <= 100, 'good = ' + good.overall);
+  assert.ok(weak.overall <= 55, 'weak = ' + weak.overall);
+  assert.ok(good.overall - weak.overall >= 30);
+});
+
+test('score: every category is 0-100 and the overall is the sum of the category points', () => {
+  const s = score(GOOD);
+  assert.deepStrictEqual(s.categories.map((c) => c.key), ['ats', 'impact', 'brevity', 'style', 'structure']);
+  for (const c of s.categories) assert.ok(c.percent >= 0 && c.percent <= 100, c.key);
+  const sum = Math.round(s.categories.reduce((a, c) => a + c.points, 0));
+  assert.strictEqual(s.overall, sum);
+});
+
+test('score: removing every number from a resume lowers the score', () => {
+  const noNumbers = GOOD.replace(/\d+\+?/g, (m, off, str) => (str.slice(Math.max(0, off - 1), off) === '\u2022' ? m : 'many'));
+  const stripped = GOOD.split('\n').map((l) => (l.startsWith('\u2022') ? l.replace(/\d[\d,.]*\+?%?/g, 'several') : l)).join('\n');
+  assert.ok(score(stripped).overall < score(GOOD).overall - 5, score(stripped).overall + ' vs ' + score(GOOD).overall);
+  assert.ok(noNumbers.length > 0);
+});
+
+test('score: partial credit, so fixing half the problem improves the score', () => {
+  const bullets = (n, withNumber) => Array.from({ length: n }, (_, i) => '\u2022 Built feature ' + String.fromCharCode(97 + i) + (withNumber ? ' used by ' + (i + 10) + ' people daily' : ' used by the whole team daily')).join('\n');
+  const head = 'Alex\na@b.com +91-9876543210 github.com/a linkedin.com/in/a\nExperience\n';
+  const none = score(head + bullets(8, false)).overall;
+  const all = score(head + bullets(8, true)).overall;
+  assert.ok(all > none);
+});
+
+test('score: empty input is 0 and never throws', () => {
+  assert.strictEqual(score('').overall, 0);
+  assert.strictEqual(score('   ').overall, 0);
+  assert.doesNotThrow(() => scoreResume(analyzeResume(null), null));
+});
+
+// ---------- AI review normaliser ----------
+
+test('normalizeReview keeps a good response and trims it', () => {
+  const r = normalizeReview({
+    summary: '  Solid fresher resume.  ',
+    strengths: ['Clear projects', '', 42, 'Good links'],
+    issues: [{ severity: 'high', where: 'Built a thing', problem: 'No result', rewrite: 'Built a thing that cut time by [X%]' }],
+    missing: ['No summary'],
+  });
+  assert.strictEqual(r.summary, 'Solid fresher resume.');
+  assert.deepStrictEqual(r.strengths, ['Clear projects', 'Good links']);
+  assert.strictEqual(r.issues[0].severity, 'high');
+  assert.deepStrictEqual(r.missing, ['No summary']);
+});
+
+test('normalizeReview survives wrong shapes, unknown severities and oversized text', () => {
+  assert.strictEqual(normalizeReview(null), null);
+  assert.strictEqual(normalizeReview('text'), null);
+  assert.strictEqual(normalizeReview({}), null);
+  assert.strictEqual(normalizeReview({ issues: 'nope', strengths: {} }), null);
+  const r = normalizeReview({ summary: 'ok', issues: [null, 5, { problem: '' }, { severity: 'urgent', problem: 'x'.repeat(900) }] });
+  assert.strictEqual(r.issues.length, 1);
+  assert.strictEqual(r.issues[0].severity, 'medium');
+  assert.strictEqual(r.issues[0].problem.length, 300);
+  assert.deepStrictEqual(r.strengths, []);
+  const many = normalizeReview({ summary: 's', issues: Array.from({ length: 30 }, () => ({ problem: 'p' })) });
+  assert.strictEqual(many.issues.length, 10);
+});
+
+test('textHash is stable and changes when the resume changes', () => {
+  assert.strictEqual(textHash('abc'), textHash('abc'));
+  assert.notStrictEqual(textHash('abc'), textHash('abd'));
+  assert.strictEqual(typeof textHash(null), 'string');
 });

@@ -68,6 +68,28 @@ const TASKS = {
     },
   },
 
+  review: {
+    maxTokens: 1600,
+    build(b) {
+      const resume = clip(b.resume, 7000);
+      if (!resume) return null;
+      const role = clip(b.targetRole, 120);
+      return [
+        'You are an experienced technical recruiter reviewing the resume of a fresher or early-career software candidate.',
+        role ? 'The candidate is targeting: ' + role + '.' : null,
+        '',
+        'RESUME:',
+        resume,
+        '',
+        'Read the whole resume the way a hiring manager would, and find real problems with content, clarity and credibility, not just formatting. Look for: vague or generic bullets, bullets that describe duties instead of results, missing scale or outcome, unexplained jargon or acronyms, claims that look inflated or cannot be checked, inconsistencies (dates, titles, skills listed but never used in any project), repeated content between projects, weak ordering, and anything a recruiter would stop on.',
+        'Rules: Never invent facts, numbers, tools or achievements. When a better version needs a number the resume does not give, use a placeholder such as [X%] or [N users] for the candidate to fill in with a real figure. Keep each rewrite under 30 words and keep only the candidate\'s own facts. If a problem needs information only the candidate has, leave "rewrite" as an empty string.',
+        'Respond with ONLY valid JSON, no preamble, in this exact shape:',
+        '{"summary": "<2-3 honest sentences: what a recruiter would think after a quick read>", "strengths": ["<specific strength>", "..."], "issues": [{"severity": "high|medium|low", "where": "<the exact bullet or line copied from the resume, or the section name>", "problem": "<what is wrong, in one sentence>", "rewrite": "<improved version, or empty string>"}], "missing": ["<important thing a recruiter would expect but cannot find>"]}',
+        'Give 2-4 strengths, at most 8 issues ordered most important first, and at most 3 missing items. Keep every string short.',
+      ].filter((line) => line !== null).join('\n');
+    },
+  },
+
   feedback: {
     maxTokens: 400,
     build(b) {

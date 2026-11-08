@@ -2,8 +2,8 @@ if(window['pdfjsLib']){
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 const { checkATS, itemsToText, htmlToPlain, normalizeText } = window.AtsTools;
-const { analyzeResume } = window.ResumeTools;
-let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null };
+const { analyzeResume, scoreResume, normalizeReview, textHash } = window.ResumeTools;
+let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null, aiReview: null };
 const STORAGE_KEY = 'jobapplyagent-data';
 // Set this to your deployed proxy's URL (see README: "Setting up the AI proxy").
 const PROXY_URL = 'https://YOUR-PROXY.vercel.app/api/chat';
@@ -30,6 +30,7 @@ function loadState(){
       state = Object.assign(state, parsed);
     }
   }catch(e){ /* no saved data yet, or storage unavailable */ }
+  state.resumeATS = state.resume ? checkATS(state.resume) : null;
   render();
 }
 
@@ -93,11 +94,23 @@ async function callApi(task, payload){
   return data.text;
 }
 
+async function callApiJson(task, payload, normalize){
+  for(let attempt = 0; attempt < 2; attempt++){
+    const text = await callApi(task, payload); // network and rate-limit errors stop here, no retry
+    try{
+      const result = normalize(extractJSON(text));
+      if(result) return result;
+    }catch(e){ /* unreadable reply: try once more */ }
+  }
+  throw new Error('BAD_RESPONSE');
+}
+
 function apiErrorMessage(e){
   const code = e && e.message;
   if(code === 'NOT_CONFIGURED') return 'The AI proxy URL is not set yet. Set PROXY_URL at the top of js/app.js.';
   if(code === 'RATE_LIMITED') return 'Too many AI requests from your network just now. Wait a few minutes and try again.';
   if(code === 'NETWORK') return 'Could not reach the AI service. Check your connection and try again.';
+  if(code === 'BAD_RESPONSE') return 'The AI sent back something we could not read, twice. Try again in a moment.';
   return 'Something went wrong reaching the AI. Try again.';
 }
 
@@ -157,6 +170,8 @@ document.getElementById('saveResumeBtn').addEventListener('click', async () => {
   note.textContent = 'Saved.';
   showToast('Resume saved and checked.', 'success');
   setTimeout(() => note.textContent = '', 2000);
+  renderScore();
+  renderAiReview();
   renderATSCard();
   renderReview();
   renderOverview();
@@ -169,7 +184,7 @@ function atsCounts(ats){
 
 function renderATSCard(){
   const el = document.getElementById('atsCard');
-  const ats = state.resumeATS;
+  const ats = state.resume ? checkATS(state.resume) : null;
   if(!ats){ el.innerHTML = ''; return; }
   const c = atsCounts(ats);
   el.innerHTML =
@@ -184,10 +199,99 @@ function renderATSCard(){
     '</div>';
 }
 
+// ---------- RESUME SCORE ----------
+function isFlattened(text){
+  return text.split('\n').filter(l => l.trim()).length < 8;
+}
+
+const FLATTENED_NOTE = 'Your saved resume has lost its line breaks, so it cannot be read properly. Upload the file again (or paste the text with its line breaks) and click Save.';
+
+function renderScore(){
+  const el = document.getElementById('scoreCard');
+  if(!state.resume){ el.innerHTML = ''; return; }
+  if(isFlattened(state.resume)){
+    el.innerHTML = '<div class="card"><h3>Resume score</h3><p class="note" style="margin:0; color:var(--ember);">' + FLATTENED_NOTE + '</p></div>';
+    return;
+  }
+  const s = scoreResume(analyzeResume(state.resume), checkATS(state.resume));
+  el.innerHTML =
+    '<div class="card"><h3>Resume score</h3>' +
+      '<div class="score-ring"><span class="num">' + s.overall + '</span><span class="lbl">/ 100 (estimate)</span></div>' +
+      s.categories.map(c =>
+        '<div class="funnel-row"><span class="funnel-label">' + escapeHtml(c.title) + '</span>' +
+        '<div class="funnel-track"><div class="funnel-fill" style="width:' + c.percent + '%"></div></div>' +
+        '<span class="funnel-count" style="width:40px;">' + c.percent + '%</span></div>').join('') +
+      '<div class="note">Built from the checks below: ATS basics 20 points, Impact 35, Brevity 15, Style 10, Structure 20. It measures wording and structure, not how strong your experience is, and no real ATS or recruiter produces this number. The AI read-through covers the content.</div>' +
+    '</div>';
+}
+
+// ---------- AI READ-THROUGH ----------
+function renderAiReview(){
+  const el = document.getElementById('aiReviewResults');
+  const saved = state.aiReview;
+  const roleEl = document.getElementById('aiRole');
+  if(saved && saved.role && !roleEl.value) roleEl.value = saved.role;
+  if(!saved || !saved.review){ el.innerHTML = ''; return; }
+  const rv = saved.review;
+  const stale = saved.hash !== textHash(state.resume);
+  const sev = { high: ['High', 'var(--danger)'], medium: ['Medium', 'var(--ember)'], low: ['Low', 'var(--muted)'] };
+  const heading = t => '<div style="font-size:12.5px; color:var(--muted); margin:16px 0 6px;">' + t + '</div>';
+  el.innerHTML =
+    (stale ? '<div class="note" style="color:var(--ember);">Your resume has changed since this read. Run it again for current feedback.</div>' : '') +
+    (rv.summary ? '<p style="font-size:14px; margin:14px 0 4px;">' + escapeHtml(rv.summary) + '</p>' : '') +
+    (rv.strengths.length ? heading('What works') + '<ul class="plain">' + rv.strengths.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul>' : '') +
+    (rv.issues.length ? heading('What to fix') + rv.issues.map((i, n) =>
+      '<div style="border-top:1px solid var(--line); padding:12px 0;">' +
+        '<div style="font-size:12px; font-weight:600; color:' + sev[i.severity][1] + ';">' + sev[i.severity][0] + '</div>' +
+        (i.where ? '<div style="font-size:12.5px; color:var(--muted); margin:4px 0;">\u201c' + escapeHtml(i.where) + '\u201d</div>' : '') +
+        '<div style="font-size:13.5px;">' + escapeHtml(i.problem) + '</div>' +
+        (i.rewrite ? '<div style="margin-top:8px; padding:8px 10px; background:var(--panel-2); border-radius:var(--radius); font-size:13.5px;">' + escapeHtml(i.rewrite) + '</div>' +
+          '<button class="btn secondary small" style="margin-top:6px;" onclick="copyReviewRewrite(' + n + ')">Copy rewrite</button>' : '') +
+      '</div>').join('') : '') +
+    (rv.missing.length ? heading('What a recruiter would look for') + '<ul class="plain">' + rv.missing.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul>' : '') +
+    '<div class="note">AI suggestions can be wrong. Keep a rewrite only if it is true, and replace every [placeholder] with a real figure you could back up in an interview.</div>';
+}
+
+function copyReviewRewrite(n){
+  const issue = state.aiReview && state.aiReview.review && state.aiReview.review.issues[Number(n)];
+  if(!issue) return;
+  navigator.clipboard.writeText(issue.rewrite)
+    .then(() => showToast('Copied to clipboard.', 'success'))
+    .catch(() => showToast('Could not copy. Select the text and copy it manually.', 'error'));
+}
+
+document.getElementById('aiReviewBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('aiReviewStatus');
+  const btn = document.getElementById('aiReviewBtn');
+  if(!state.resume){
+    statusEl.innerHTML = '<span class="error-text">Save your resume first.</span>';
+    return;
+  }
+  if(isFlattened(state.resume)){
+    statusEl.innerHTML = '<span class="error-text">' + escapeHtml(FLATTENED_NOTE) + '</span>';
+    return;
+  }
+  statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Reading your resume...</div>';
+  btn.disabled = true;
+  try{
+    const role = document.getElementById('aiRole').value.trim();
+    const review = await callApiJson('review', { resume: state.resume, targetRole: role }, normalizeReview);
+    state.aiReview = { hash: textHash(state.resume), review: review, role: role, at: Date.now() };
+    await persist();
+    statusEl.textContent = '';
+    renderAiReview();
+  }catch(e){
+    statusEl.innerHTML = '<span class="error-text">' + escapeHtml(apiErrorMessage(e)) + '</span>';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
 // ---------- RESUME REVIEW ----------
 function renderReview(){
   const el = document.getElementById('reviewCard');
   if(!state.resume){ el.innerHTML = ''; return; }
+  if(isFlattened(state.resume)){ el.innerHTML = ''; return; }
   const r = analyzeResume(state.resume);
   const p = r.parsed;
   const yes = '<span class="ats-icon pass">\u2713</span>';
@@ -591,7 +695,7 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
     const text = await file.text();
     const parsed = JSON.parse(text);
     if(typeof parsed !== 'object' || !parsed) throw new Error('bad shape');
-    state = Object.assign({ resume:'', jobs:[], tailored:{}, preps:{}, resumeATS:null }, parsed);
+    state = Object.assign({ resume:'', jobs:[], tailored:{}, preps:{}, resumeATS:null, aiReview:null }, parsed);
     persist();
     render();
     statusEl.textContent = 'Backup restored.';
@@ -605,6 +709,8 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
 function render(){
   document.getElementById('countJobs').textContent = state.jobs.length;
   document.getElementById('resumeInput').value = state.resume;
+  renderScore();
+  renderAiReview();
   renderATSCard();
   renderReview();
   renderOverview();

@@ -82,9 +82,20 @@
         <label for="resumeInput">Resume text</label>
         <textarea id="resumeInput" style="min-height:280px" placeholder="Paste your resume here — work history, skills, education..."></textarea>
         <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
-          <button class="btn" id="saveResumeBtn">Save &amp; check ATS readiness</button>
+          <button class="btn" id="saveResumeBtn">Save &amp; review resume</button>
           <span id="resumeSavedNote" class="note" style="margin:0;"></span>
         </div>
+      </div>
+      <div id="scoreCard"></div>
+      <div class="card" id="aiReviewCard">
+        <h3>AI read-through</h3>
+        <p class="note" style="margin-top:0;">The AI reads your whole resume like a hiring manager and points out content problems: vague bullets, duties instead of results, unexplained jargon, claims that look inflated, inconsistencies. For each one it suggests a rewrite. It will not invent numbers; where one is needed it leaves a placeholder like [X%] for you to fill in truthfully.</p>
+        <div class="row" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;"><label for="aiRole">Target role (optional)</label><input type="text" id="aiRole" placeholder="e.g. SDE fresher, backend developer"></div>
+          <button class="btn" id="aiReviewBtn" style="flex:none;">Read my resume</button>
+        </div>
+        <div id="aiReviewStatus" style="margin-top:12px;"></div>
+        <div id="aiReviewResults"></div>
       </div>
       <div id="atsCard"></div>
       <div id="reviewCard"></div>

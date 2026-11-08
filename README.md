@@ -18,7 +18,7 @@ jobapplyagent-site/
 ├── test/               tests for ats.js and resume.js
 ├── favicon.svg         icon (also used as the sidebar logo)
 ├── proxy/              serverless function that holds the API key (deployed separately)
-│   ├── api/chat.js     AI calls (match, prep, feedback)
+│   ├── api/chat.js     AI calls (match, prep, feedback, resume review)
 │   ├── api/jobs.js     job search (Arbeitnow, Adzuna, company boards)
 │   ├── lib/common.js   CORS + rate limiting shared by both
 │   └── test/           tests for both endpoints
@@ -33,7 +33,11 @@ jobapplyagent-site/
   mammoth.js). Runs six basic ATS checks (contact info, section headers, length, bullets,
   unusual characters), shows how the resume was read (sections, links, skills), and reviews
   the content: strong verbs, numbers, buzzwords, bullet length, tense, dates, missing
-  sections. It points at the exact bullets that need work. All rule-based.
+  sections, pointing at the exact bullets that need work. These checks are rule-based and
+  add up to a transparent score out of 100 (an estimate, with a per-category breakdown).
+  An optional **AI read-through** reads the whole resume like a hiring manager and flags
+  content problems with suggested rewrites. It never invents numbers: where one is needed
+  it leaves a placeholder such as [X%] for you to fill in truthfully.
 - **Scout** — live search across three sources (an open Europe/remote board, Adzuna for
   India and worldwide, or one company's Greenhouse/Lever careers page), or add any listing
   (LinkedIn, a company careers page, anywhere) by hand.
@@ -72,7 +76,7 @@ cd proxy && npm test             # proxy endpoints
 
 ## Setting up the AI proxy
 
-Match & tailor and Prepare need an LLM. The browser never sees an API key: it sends
+Match & tailor, Prepare and the resume AI read-through need an LLM. The browser never sees an API key: it sends
 `{task, resume, job...}` to the proxy, and the proxy builds the prompt and makes the call.
 Because the prompts live on the server, the endpoint can't be used as a general chatbot.
 

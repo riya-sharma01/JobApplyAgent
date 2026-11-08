@@ -188,8 +188,8 @@
     return found;
   }
 
-  function check(id, label, pass, note, examples) {
-    return { id, label, pass, note, examples: examples || [] };
+  function check(id, label, pass, note, examples, score) {
+    return { id, label, pass, note, examples: examples || [], score: score === undefined ? (pass ? 1 : 0) : score };
   }
 
   function analyzeResume(raw) {
@@ -206,7 +206,8 @@
       enough && actionPct >= 80,
       !enough ? 'Fewer than 3 bullets were found, so this could not be judged.'
         : (n - nonAction.length) + ' of ' + n + ' bullets start with an action verb (' + actionPct + '%). Aim for 80% or more.',
-      nonAction.slice(0, 6).map((b) => ({ text: clip(b.text, 130), hint: weakHint(b) || 'Start with a specific past-tense verb such as "Built" or "Reduced".' })));
+      nonAction.slice(0, 6).map((b) => ({ text: clip(b.text, 130), hint: weakHint(b) || 'Start with a specific past-tense verb such as "Built" or "Reduced".' })),
+      enough ? Math.min(1, actionPct / 80) : 0);
 
     const noNumbers = bullets.filter((b) => !hasQuantity(b.text));
     const numPct = n ? Math.round(((n - noNumbers.length) / n) * 100) : 0;
@@ -214,7 +215,8 @@
       enough && numPct >= 50,
       !enough ? 'Fewer than 3 bullets were found, so this could not be judged.'
         : (n - noNumbers.length) + ' of ' + n + ' bullets include a number (' + numPct + '%). Aim for half or more.',
-      noNumbers.slice(0, 6).map((b) => ({ text: clip(b.text, 130), hint: 'Add scale or a result: how many, how much, how fast, how often.' })));
+      noNumbers.slice(0, 6).map((b) => ({ text: clip(b.text, 130), hint: 'Add scale or a result: how many, how much, how fast, how often.' })),
+      enough ? Math.min(1, numPct / 50) : 0);
 
     const lowerWhole = wholeText.toLowerCase();
     const buzz = [...new Set(BUZZWORDS.filter((w) => new RegExp('\\b' + w.replace(/[-]/g, '[- ]') + '\\b').test(lowerWhole)))];
@@ -239,7 +241,8 @@
       enough && okPct >= 80 && tooLong.length === 0,
       !enough ? 'Fewer than 3 bullets were found, so this could not be judged.'
         : (n - offLength.length) + ' of ' + n + ' bullets are between 8 and 32 words. Long bullets get skimmed.',
-      offLength.slice(0, 6).map((x) => ({ text: clip(x.b.text, 130), hint: x.w > 32 ? 'Too long (' + x.w + ' words). Split it or cut the detail.' : 'Too short (' + x.w + ' words). Add what you did and the result.' })));
+      offLength.slice(0, 6).map((x) => ({ text: clip(x.b.text, 130), hint: x.w > 32 ? 'Too long (' + x.w + ' words). Split it or cut the detail.' : 'Too short (' + x.w + ' words). Add what you did and the result.' })),
+      enough ? Math.min(1, okPct / 80) * (tooLong.length ? 0.7 : 1) : 0);
 
     const totalCheck = check('count', 'A sensible number of bullets', n >= 8 && n <= 30,
       n + ' bullets in total. ' + (n < 8 ? 'Too few to show your work.' : n > 30 ? 'Too many; keep the strongest.' : 'Within a normal range.'), []);
@@ -298,5 +301,59 @@
     return { parsed, categories };
   }
 
-  return { parseResume, analyzeResume, matchSection };
+  // ---------- score ----------
+
+  // Points per check (they add up to 80); the six basic ATS checks share the other 20.
+  const WEIGHTS = { verbs: 10, numbers: 12, buzzwords: 6, variety: 7, length: 10, count: 5, pronouns: 3, tense: 4, dates: 3, sections: 6, links: 5, skills: 5, top: 4 };
+  const ATS_POINTS = 20;
+
+  // A transparent estimate: every point comes from a check you can see. It cannot judge
+  // how strong your experience is, which is what the AI read is for.
+  function scoreResume(analysis, ats) {
+    if (!analysis.parsed.lines.length) {
+      return { overall: 0, categories: [{ key: 'ats', title: 'ATS basics', percent: 0 }].concat(analysis.categories.map((c) => ({ key: c.key, title: c.title, percent: 0 }))) };
+    }
+    const cats = analysis.categories.map((cat) => {
+      let got = 0;
+      let max = 0;
+      for (const k of cat.checks) {
+        const w = WEIGHTS[k.id] || 0;
+        max += w;
+        got += w * k.score;
+      }
+      return { key: cat.key, title: cat.title, points: got, percent: max ? Math.round((got / max) * 100) : 0 };
+    });
+    const items = (ats && ats.items) || [];
+    const atsPoints = items.length ? (ATS_POINTS * items.filter((i) => i.pass).length) / items.length : 0;
+    cats.unshift({ key: 'ats', title: 'ATS basics', points: atsPoints, percent: items.length ? Math.round((atsPoints / ATS_POINTS) * 100) : 0 });
+    return { overall: Math.round(cats.reduce((a, c) => a + c.points, 0)), categories: cats };
+  }
+
+  // ---------- AI review: clean up whatever the model sent back ----------
+
+  function normalizeReview(o) {
+    if (!o || typeof o !== 'object') return null;
+    const str = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+    const list = (v, n, m) => (Array.isArray(v) ? v.map((x) => str(x, n)).filter(Boolean).slice(0, m) : []);
+    const issues = Array.isArray(o.issues)
+      ? o.issues
+        .map((i) => (i && typeof i === 'object'
+          ? { severity: ['high', 'medium', 'low'].includes(i.severity) ? i.severity : 'medium', where: str(i.where, 300), problem: str(i.problem, 300), rewrite: str(i.rewrite, 300) }
+          : null))
+        .filter((i) => i && i.problem)
+        .slice(0, 10)
+      : [];
+    const out = { summary: str(o.summary, 600), strengths: list(o.strengths, 200, 5), issues, missing: list(o.missing, 200, 5) };
+    return out.summary || out.issues.length ? out : null;
+  }
+
+  // Small stable fingerprint, used to tell whether a saved AI read still matches the resume.
+  function textHash(text) {
+    let h = 5381;
+    const s = String(text || '');
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36) + ':' + s.length;
+  }
+
+  return { parseResume, analyzeResume, matchSection, scoreResume, normalizeReview, textHash };
 });

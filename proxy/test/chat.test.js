@@ -145,3 +145,26 @@ test('returns 500 if the server has no API key configured', async () => {
   process.env.ANTHROPIC_API_KEY = saved;
   assert.strictEqual(res.statusCode, 500);
 });
+
+test('review: builds a recruiter prompt with the no-invention rule and the target role', () => {
+  const prompt = handler._TASKS.review.build({ resume: 'Built a thing', targetRole: 'SDE fresher' });
+  assert.ok(prompt.includes('Built a thing') && prompt.includes('SDE fresher'));
+  assert.ok(prompt.includes('Never invent facts'));
+  assert.ok(prompt.includes('[X%]'));
+  assert.ok(!prompt.includes('null') && !prompt.includes('\\n'));
+  assert.ok(!handler._TASKS.review.build({ resume: 'x' }).includes('is targeting'));
+});
+
+test('review: needs a resume, and clips very long input', () => {
+  assert.strictEqual(handler._TASKS.review.build({ resume: '   ' }), null);
+  assert.strictEqual(handler._TASKS.review.build({}), null);
+  const p = handler._TASKS.review.build({ resume: 'r'.repeat(30000), targetRole: 't'.repeat(500) });
+  assert.ok(p.length < 10000);
+});
+
+test('review: goes through the full handler with the larger token budget', async () => {
+  const res = makeRes();
+  await handler(makeReq({ body: { task: 'review', resume: 'Experience\n- Built it', targetRole: 'SDE' } }), res);
+  assert.strictEqual(res.statusCode, 200);
+  assert.strictEqual(JSON.parse(calls[0].opts.body).max_tokens, 1600);
+});
