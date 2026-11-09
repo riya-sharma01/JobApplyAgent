@@ -134,9 +134,17 @@
     const contact = { email, phone: Ats.hasPhone(Ats.normalizeText(text)), linkedin, github, portfolio: urls[0] || '' };
 
     const skills = [];
+    const hasLabel = (l) => /^[^:]{1,40}:\s/.test(l);
     for (const s of sections.filter((x) => x.key === 'skills')) {
+      // In a labelled list ("Core CS: a, b, c") a line without a label is the wrapped end of the line above.
+      const labelled = s.lines.some(hasLabel);
+      const joined = [];
       for (const l of s.lines) {
-        const body = l.replace(/^[^:]{1,30}:\s*/, '');
+        if (labelled && joined.length && !hasLabel(l)) joined[joined.length - 1] += ' ' + l;
+        else joined.push(l);
+      }
+      for (const l of joined) {
+        const body = l.replace(/^[^:]{1,40}:\s*/, '');
         for (const tok of body.split(/[,;|\u2022]/)) {
           const t = tok.trim();
           if (t && t.length <= 30 && !skills.some((k) => k.toLowerCase() === t.toLowerCase())) skills.push(t);

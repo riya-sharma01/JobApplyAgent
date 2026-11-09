@@ -233,3 +233,15 @@ test('textHash is stable and changes when the resume changes', () => {
   assert.notStrictEqual(textHash('abc'), textHash('abd'));
   assert.strictEqual(typeof textHash(null), 'string');
 });
+
+test('a wrapped skills line is not split into two fake skills', () => {
+  const p = parseResume('Technical Skills\nProgramming Languages: Java, Python\nCore CS: Operating Systems, Database Management\nSystems, Computer Networks\nTools: Git, Linux');
+  assert.ok(p.skills.includes('Database Management Systems'), p.skills.join('|'));
+  assert.ok(!p.skills.includes('Systems'));
+  assert.strictEqual(p.skills.length, 7);
+});
+
+test('unlabelled skill lines stay separate', () => {
+  const p = parseResume('Skills\nJava, Python\nReact, Node.js');
+  assert.deepStrictEqual(p.skills, ['Java', 'Python', 'React', 'Node.js']);
+});
