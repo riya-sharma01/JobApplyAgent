@@ -52,6 +52,22 @@
         <h2>Overview</h2>
         <p>Where your search stands right now, end to end.</p>
       </div>
+      <div class="card" id="statusCard">
+        <h3>What's working</h3>
+        <div id="statusRows"></div>
+        <button class="btn secondary small" id="checkStatusBtn" style="margin-top:10px;">Check again</button>
+      </div>
+      <div class="card">
+        <h3>Your AI key (optional)</h3>
+        <p class="note" style="margin-top:0;">Paste your own key to switch the AI features on without any server. It is stored only in this browser and is sent only to the AI provider when you use an AI feature. Anyone with access to this browser profile could read it, so use a key with a low spend limit and never on a shared computer.</p>
+        <div class="row" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;"><label for="ownKeyInput">AI API key</label><input type="password" id="ownKeyInput" autocomplete="off" placeholder="sk-..."></div>
+          <button class="btn" id="saveOwnKeyBtn" style="flex:none;">Save key</button>
+          <button class="btn secondary" id="removeOwnKeyBtn" style="flex:none;">Remove</button>
+        </div>
+        <div class="note" id="ownKeyNote"></div>
+        <div class="note"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get an API key here</a></div>
+      </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-num" id="ovResumeStat">—</div><div class="stat-lbl">ATS basics passed</div></div>
         <div class="stat-card"><div class="stat-num" id="ovJobsStat">0</div><div class="stat-lbl">Jobs in pipeline</div></div>
@@ -216,6 +232,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="js/ats.js"></script>
 <script src="js/resume.js"></script>
+<script src="js/prompts.js"></script>
+<script src="js/jobs-core.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

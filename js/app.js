@@ -3,10 +3,18 @@ if(window['pdfjsLib']){
 }
 const { checkATS, itemsToText, htmlToPlain, normalizeText } = window.AtsTools;
 const { analyzeResume, scoreResume, normalizeReview, textHash } = window.ResumeTools;
+const Prompts = window.Prompts;
+const JobsCore = window.JobsCore;
 let state = { resume: '', jobs: [], tailored: {}, preps: {}, resumeATS: null, aiReview: null };
 const STORAGE_KEY = 'jobapplyagent-data';
 // Set this to your deployed proxy's URL (see README: "Setting up the AI proxy").
 const PROXY_URL = 'https://YOUR-PROXY.vercel.app/api/chat';
+// ---------- CONFIG ----------
+const OWN_KEY_STORAGE = 'jobapplyagent-ai-key';
+const HEALTH_URL = PROXY_URL.replace(/\/chat$/, '/health');
+const proxyReady = () => !PROXY_URL.includes('YOUR-PROXY');
+const getOwnKey = () => localStorage.getItem(OWN_KEY_STORAGE) || '';
+// ---------- /CONFIG ----------
 const THEME_STORAGE_KEY = 'jobapplyagent-theme';
 
 function migrateOldKeys(){
@@ -17,8 +25,8 @@ function migrateOldKeys(){
   if(!localStorage.getItem(THEME_STORAGE_KEY) && localStorage.getItem('pipeline-theme')){
     localStorage.setItem(THEME_STORAGE_KEY, localStorage.getItem('pipeline-theme'));
   }
-  // API keys are no longer stored in the browser: remove any left over from older versions
-  ['jobapplyagent-ai-key', 'jobapplyagent-anthropic-key', 'pipeline-anthropic-key'].forEach(k => localStorage.removeItem(k));
+  // remove API keys stored under the older names
+  ['jobapplyagent-anthropic-key', 'pipeline-anthropic-key'].forEach(k => localStorage.removeItem(k));
 }
 migrateOldKeys();
 
@@ -75,8 +83,7 @@ function showToast(message, type){
   setTimeout(() => el.remove(), 3200);
 }
 
-async function callApi(task, payload){
-  if(PROXY_URL.includes('YOUR-PROXY')) throw new Error('NOT_CONFIGURED');
+async function callProxy(task, payload){
   let response;
   try{
     response = await fetch(PROXY_URL, {
@@ -94,6 +101,43 @@ async function callApi(task, payload){
   return data.text;
 }
 
+// Calls the AI straight from the browser with the person's own key. Same prompts as the proxy.
+async function callDirect(task, payload, key){
+  const def = Prompts.TASKS[task];
+  const prompt = def && def.build(payload);
+  if(!prompt) throw new Error('API_ERROR');
+  let response;
+  try{
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: Prompts.DEFAULT_MODEL, max_tokens: def.maxTokens, messages: [{ role: 'user', content: prompt }] })
+    });
+  }catch(e){
+    throw new Error('NETWORK');
+  }
+  if(response.status === 401 || response.status === 403) throw new Error('BAD_KEY');
+  if(response.status === 429) throw new Error('RATE_LIMITED');
+  if(!response.ok) throw new Error('API_ERROR');
+  const data = await response.json();
+  const block = ((data && data.content) || []).find(b => b.type === 'text');
+  if(!block) throw new Error('API_ERROR');
+  return block.text;
+}
+
+// A key the person saved themselves wins; otherwise the proxy; otherwise AI is off.
+async function callApi(task, payload){
+  const key = getOwnKey();
+  if(key) return callDirect(task, payload, key);
+  if(proxyReady()) return callProxy(task, payload);
+  throw new Error('NOT_CONFIGURED');
+}
+
 async function callApiJson(task, payload, normalize){
   for(let attempt = 0; attempt < 2; attempt++){
     const text = await callApi(task, payload); // network and rate-limit errors stop here, no retry
@@ -107,7 +151,8 @@ async function callApiJson(task, payload, normalize){
 
 function apiErrorMessage(e){
   const code = e && e.message;
-  if(code === 'NOT_CONFIGURED') return 'The AI proxy URL is not set yet. Set PROXY_URL at the top of js/app.js.';
+  if(code === 'NOT_CONFIGURED') return 'AI features are not switched on yet. Add your own AI key in Overview, under "Your AI key" (it stays in this browser), or connect the proxy (see the README).';
+  if(code === 'BAD_KEY') return 'The AI service rejected that key. Check it in Overview, under "Your AI key".';
   if(code === 'RATE_LIMITED') return 'Too many AI requests from your network just now. Wait a few minutes and try again.';
   if(code === 'NETWORK') return 'Could not reach the AI service. Check your connection and try again.';
   if(code === 'BAD_RESPONSE') return 'The AI sent back something we could not read, twice. Try again in a moment.';
@@ -329,7 +374,7 @@ function renderReview(){
 }
 
 // ---------- SCOUT: live search ----------
-// All job sources go through the proxy, which cleans and matches the listings.
+// With a proxy connected, searches go through it. Without one they run in this browser.
 const JOBS_URL = PROXY_URL.replace(/\/chat$/, '/jobs');
 let lastResults = [];
 
@@ -340,15 +385,16 @@ const SOURCE_HINTS = {
 };
 
 const SEARCH_ERRORS = {
-  NOT_CONFIGURED: 'The proxy URL is not set yet. Set PROXY_URL at the top of js/app.js (see the README).',
   NETWORK: 'Could not reach the job service. Check your connection and try again.',
   rate_limited: 'Too many searches from your network just now. Wait a few minutes and try again.',
   source_not_configured: 'This source is not switched on for this site yet.',
   source_unavailable: 'That job source did not answer. Try again in a minute, or pick another source.',
   company_not_found: 'No Greenhouse or Lever board found with that name. Check the spelling against the company\'s careers URL.',
   bad_company: 'Use only letters, numbers and hyphens for the company name.',
-  forbidden_origin: 'This site is not allowed to use the proxy. Add its address to ALLOWED_ORIGINS on the server.'
+  forbidden_origin: 'This site is not allowed to use the proxy. Add its address to ALLOWED_ORIGINS on the server.',
+  ADZUNA_NEEDS_PROXY: 'Adzuna uses a private key, so it needs the proxy. Pick another source, or connect the proxy (see the README).'
 };
+const DIRECT_HINT = ' If your browser is blocking direct requests to that site, connecting the proxy gets around it.';
 
 function safeUrl(u){
   try{
@@ -381,6 +427,31 @@ function renderSearchResults(){
   }).join('');
 }
 
+async function runSearch(p){
+  if(proxyReady()){
+    const params = new URLSearchParams({ source: p.source, q: p.q, location: p.location });
+    if(p.source === 'company') params.set('company', p.company);
+    let response;
+    try{
+      response = await fetch(JOBS_URL + '?' + params);
+    }catch(e){
+      throw new Error('NETWORK');
+    }
+    let data = null;
+    try{ data = await response.json(); }catch(e){ data = null; }
+    if(!response.ok) throw new Error((data && data.error) || 'API_ERROR');
+    return data;
+  }
+  if(p.source === 'adzuna') throw new Error('ADZUNA_NEEDS_PROXY');
+  try{
+    return await JobsCore.searchJobs(p, { fetch: (u, o) => fetch(u, o), env: {} });
+  }catch(e){
+    const err = new Error((e && e.message) || 'source_unavailable');
+    err.direct = true;
+    throw err;
+  }
+}
+
 async function searchJobs(){
   const source = document.getElementById('searchSource').value;
   const keyword = document.getElementById('searchKeyword').value.trim();
@@ -399,19 +470,7 @@ async function searchJobs(){
   statusEl.innerHTML = '<div class="loading"><span class="dot"></span> Searching...</div>';
   btn.disabled = true;
   try{
-    if(PROXY_URL.includes('YOUR-PROXY')) throw new Error('NOT_CONFIGURED');
-    const params = new URLSearchParams({ source: source, q: keyword, location: location });
-    if(source === 'company') params.set('company', company);
-    let response;
-    try{
-      response = await fetch(JOBS_URL + '?' + params);
-    }catch(e){
-      throw new Error('NETWORK');
-    }
-    let data = null;
-    try{ data = await response.json(); }catch(e){ data = null; }
-    if(!response.ok) throw new Error((data && data.error) || 'API_ERROR');
-
+    const data = await runSearch({ source: source, q: keyword, location: location, company: company });
     lastResults = Array.isArray(data.jobs) ? data.jobs : [];
     if(lastResults.length){
       statusEl.textContent = 'Showing ' + lastResults.length + (data.matched > lastResults.length ? ' of ' + data.matched : '') +
@@ -422,7 +481,8 @@ async function searchJobs(){
         (source === 'arbeitnow' ? ', or switch to Adzuna or a company page, since this board is mostly Europe and remote tech.' : '.');
     }
   }catch(e){
-    statusEl.innerHTML = '<span class="error-text">' + escapeHtml(SEARCH_ERRORS[e && e.message] || 'Search failed. Try again.') + '</span>';
+    const msg = (SEARCH_ERRORS[e && e.message] || 'Search failed. Try again.') + (e && e.direct && e.message === 'source_unavailable' ? DIRECT_HINT : '');
+    statusEl.innerHTML = '<span class="error-text">' + escapeHtml(msg) + '</span>';
   }finally{
     btn.disabled = false;
   }
@@ -636,6 +696,83 @@ async function removeJob(jobId){
   await persist();
   render();
 }
+
+// ---------- CONNECTION STATUS & OWN KEY ----------
+let health = { checked: false, reachable: null, ai: null, adzuna: null, code: '' };
+
+async function checkConnection(){
+  if(!proxyReady()){
+    health = { checked: true, reachable: null, ai: null, adzuna: null, code: '' };
+    renderStatus();
+    return;
+  }
+  health = { checked: false, reachable: null, ai: null, adzuna: null, code: '' };
+  renderStatus();
+  try{
+    const r = await fetch(HEALTH_URL);
+    let d = null;
+    try{ d = await r.json(); }catch(e){ d = null; }
+    health = r.ok && d ? { checked: true, reachable: true, ai: !!d.ai, adzuna: !!d.adzuna, code: '' }
+                       : { checked: true, reachable: false, ai: null, adzuna: null, code: (d && d.error) || '' };
+  }catch(e){
+    health = { checked: true, reachable: false, ai: null, adzuna: null, code: '' };
+  }
+  renderStatus();
+}
+
+// Each row: [state, name, text]. state is ok, bad, off or wait.
+function statusRows(){
+  const rows = [];
+  const proxy = proxyReady();
+  const up = proxy && health.checked && health.reachable;
+  rows.push(['ok', 'Resume reading and score', 'Ready. It runs in your browser and nothing is sent anywhere.']);
+  if(!proxy) rows.push(['off', 'Proxy', 'Not connected (optional). Connect it so visitors can use AI without a key of their own. See the README.']);
+  else if(!health.checked) rows.push(['wait', 'Proxy', 'Checking...']);
+  else if(health.reachable) rows.push(['ok', 'Proxy', 'Connected.']);
+  else rows.push(['bad', 'Proxy', health.code === 'forbidden_origin'
+    ? 'Found it, but it refused this site. Add this site\'s address to ALLOWED_ORIGINS on the server.'
+    : 'Could not reach it. Check PROXY_URL at the top of js/app.js and that the proxy is deployed.']);
+  rows.push(['ok', 'Job search', up
+    ? 'Ready through the proxy.' + (health.adzuna ? ' Adzuna is on.' : ' Adzuna is off (it needs ADZUNA_APP_ID and ADZUNA_APP_KEY on the server).')
+    : 'Ready, straight from your browser (open board and company careers pages). Adzuna needs the proxy.']);
+  if(getOwnKey()) rows.push(['ok', 'AI features', 'Ready, using your own key (stored only in this browser).']);
+  else if(up && health.ai) rows.push(['ok', 'AI features', 'Ready through the proxy.']);
+  else if(up) rows.push(['bad', 'AI features', 'The proxy is up but has no ANTHROPIC_API_KEY set. Add it on the server, or save your own key below.']);
+  else rows.push(['off', 'AI features', 'Off. Save your own key below, or connect the proxy.']);
+  return rows;
+}
+
+function renderStatus(){
+  const icon = { ok: ['pass', '\u2713'], bad: ['warn', '!'], off: ['', '\u2013'], wait: ['', '\u2026'] };
+  document.getElementById('statusRows').innerHTML = statusRows().map(r =>
+    '<div class="ats-row"><span class="ats-icon ' + icon[r[0]][0] + '">' + icon[r[0]][1] + '</span>' +
+    '<div class="body"><div class="lbl">' + escapeHtml(r[1]) + '</div><div class="note-text">' + escapeHtml(r[2]) + '</div></div></div>'
+  ).join('');
+}
+
+function renderOwnKeyNote(){
+  document.getElementById('ownKeyNote').textContent = getOwnKey() ? 'A key is saved in this browser.' : 'No key saved.';
+}
+
+document.getElementById('saveOwnKeyBtn').addEventListener('click', () => {
+  const input = document.getElementById('ownKeyInput');
+  const v = input.value.trim();
+  if(!v){ showToast('Paste a key first.', 'error'); return; }
+  localStorage.setItem(OWN_KEY_STORAGE, v);
+  input.value = '';
+  showToast('Key saved in this browser.', 'success');
+  renderOwnKeyNote();
+  renderStatus();
+});
+document.getElementById('removeOwnKeyBtn').addEventListener('click', () => {
+  localStorage.removeItem(OWN_KEY_STORAGE);
+  showToast('Key removed.', 'success');
+  renderOwnKeyNote();
+  renderStatus();
+});
+document.getElementById('checkStatusBtn').addEventListener('click', checkConnection);
+renderOwnKeyNote();
+checkConnection();
 
 // ---------- OVERVIEW ----------
 function renderOverview(){

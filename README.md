@@ -15,12 +15,16 @@ jobapplyagent-site/
 ├── js/app.js           page behavior
 ├── js/ats.js           resume text extraction + basic ATS checks (no page dependencies)
 ├── js/resume.js        resume parser + content review (impact, brevity, style, structure)
-├── test/               tests for ats.js and resume.js
+├── js/prompts.js       AI prompts (copy of proxy/lib/prompts.js, see "Shared code")
+├── js/jobs-core.js     job search logic (copy of proxy/lib/jobs-core.js)
+├── test/               tests for the js/ files
+├── tools/sync-shared.js  copies the shared files from proxy/lib/ to js/
 ├── favicon.svg         icon (also used as the sidebar logo)
 ├── proxy/              serverless function that holds the API key (deployed separately)
 │   ├── api/chat.js     AI calls (match, prep, feedback, resume review)
 │   ├── api/jobs.js     job search (Arbeitnow, Adzuna, company boards)
-│   ├── lib/common.js   CORS + rate limiting shared by both
+│   ├── api/health.js   tells the site what is switched on (yes/no only)
+│   ├── lib/            common.js, prompts.js, jobs-core.js
 │   └── test/           tests for both endpoints
 ├── .github/workflows/  GitHub Pages deploy (manual trigger)
 ├── LICENSE
@@ -40,7 +44,8 @@ jobapplyagent-site/
   it leaves a placeholder such as [X%] for you to fill in truthfully.
 - **Scout** — live search across three sources (an open Europe/remote board, Adzuna for
   India and worldwide, or one company's Greenhouse/Lever careers page), or add any listing
-  (LinkedIn, a company careers page, anywhere) by hand.
+  (LinkedIn, a company careers page, anywhere) by hand. Works without a server, except
+  Adzuna.
 - **Match & tailor** — Claude compares your resume against a saved job: match score,
   strengths, gaps, a tailored summary, and bullets to add — copyable or downloadable.
 - **Prepare** — generates company/role talking points and likely interview questions
@@ -71,14 +76,31 @@ Then open `http://localhost:8000`.
 ```
 node --test test/ats.test.js     # resume extraction + basic ATS checks
 node --test test/resume.test.js  # resume parser + content review
+node --test test/sync.test.js    # js/ copies match proxy/lib/
 cd proxy && npm test             # proxy endpoints
 ```
 
-## Setting up the AI proxy
+## Two ways to run it
 
-Match & tailor, Prepare and the resume AI read-through need an LLM. The browser never sees an API key: it sends
+The site works in two modes. The **Overview** tab has a "What's working" card that shows
+which one you are in and what is on or off.
+
+**1. No server (works as soon as the site loads).** Resume reading, the score, the
+tracker and backups run in your browser. Job search runs straight from your browser
+against the open board and company careers pages. For the AI features, paste your own
+key under "Your AI key" on the Overview tab. It is stored only in that browser and sent
+only to the AI provider. Adzuna search needs the proxy. If a job site blocks direct browser
+requests you get a clear message, and connecting the proxy fixes it.
+
+**2. With the proxy (for visitors).** A small serverless function holds the key, so
+visitors can use the AI features without a key of their own. Set it up below.
+
+## Connecting the proxy
+
+Match & tailor, Prepare and the resume AI read-through need an LLM. With the proxy, the browser never sees an API key: it sends
 `{task, resume, job...}` to the proxy, and the proxy builds the prompt and makes the call.
 Because the prompts live on the server, the endpoint can't be used as a general chatbot.
+If a visitor saves their own key it is used first, and the proxy is the fallback.
 
 1. Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys)
    and **set a monthly spend limit on it**. That limit is your real backstop.
@@ -108,6 +130,13 @@ What the proxy does and doesn't protect against:
 
 Tests: `cd proxy && npm test` (Node's built-in runner, no dependencies).
 
+## Shared code
+
+The prompts and the job-search logic must behave the same in the proxy and in the browser,
+so each is written once in `proxy/lib/` and copied to `js/`. After editing either file in
+`proxy/lib/`, run `node tools/sync-shared.js`. The test `node --test test/sync.test.js`
+fails if the copies drift apart.
+
 ## What's real vs. what's a heuristic
 
 - **Job search** runs through the proxy. Arbeitnow (reads 3 pages) is Europe-heavy and
@@ -129,7 +158,8 @@ Everything you enter is stored in your browser's local storage under the key
 `jobapplyagent-data`. Job search terms go to the proxy and on to the job source you picked. When you use Match & tailor or
 Prepare, your resume text and the job description go to the proxy and on to the LLM
 provider; the proxy doesn't store them. Clearing browser data erases your data, so export
-a backup first if that matters to you.
+a backup first if that matters to you. If you save your own AI key, it is kept in the same
+local storage, so use a key with a low spend limit and never on a shared computer.
 
 ## License
 
