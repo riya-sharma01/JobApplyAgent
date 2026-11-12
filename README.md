@@ -44,8 +44,8 @@ jobapplyagent-site/
   it leaves a placeholder such as [X%] for you to fill in truthfully.
 - **Scout** — live search across three sources (an open Europe/remote board, Adzuna for
   India and worldwide, or one company's Greenhouse/Lever careers page), or add any listing
-  (LinkedIn, a company careers page, anywhere) by hand. Works without a server, except
-  Adzuna.
+  (LinkedIn, a company careers page, anywhere) by hand. Works without a server; Adzuna needs
+  your free keys.
 - **Match & tailor** — Claude compares your resume against a saved job: match score,
   strengths, gaps, a tailored summary, and bullets to add — copyable or downloadable.
 - **Prepare** — generates company/role talking points and likely interview questions
@@ -89,8 +89,9 @@ which one you are in and what is on or off.
 tracker and backups run in your browser. Job search runs straight from your browser
 against the open board and company careers pages. For the AI features, paste your own
 key under "Your AI key" on the Overview tab. It is stored only in that browser and sent
-only to the AI provider. Adzuna search needs the proxy. If a job site blocks direct browser
-requests you get a clear message, and connecting the proxy fixes it.
+only to the AI provider. Adzuna search (the best source for India) works the same way: save your
+free app ID and app key from developer.adzuna.com under "Your Adzuna keys". If a job site
+blocks direct browser requests you get a clear message, and connecting the proxy fixes it.
 
 **2. With the proxy (for visitors).** A small serverless function holds the key, so
 visitors can use the AI features without a key of their own. Set it up below.
@@ -158,7 +159,7 @@ Everything you enter is stored in your browser's local storage under the key
 `jobapplyagent-data`. Job search terms go to the proxy and on to the job source you picked. When you use Match & tailor or
 Prepare, your resume text and the job description go to the proxy and on to the LLM
 provider; the proxy doesn't store them. Clearing browser data erases your data, so export
-a backup first if that matters to you. If you save your own AI key, it is kept in the same
+a backup first if that matters to you. If you save your own AI key or Adzuna keys, they are kept in the same
 local storage, so use a key with a low spend limit and never on a shared computer.
 
 ## License

@@ -14,6 +14,15 @@ const OWN_KEY_STORAGE = 'jobapplyagent-ai-key';
 const HEALTH_URL = PROXY_URL.replace(/\/chat$/, '/health');
 const proxyReady = () => !PROXY_URL.includes('YOUR-PROXY');
 const getOwnKey = () => localStorage.getItem(OWN_KEY_STORAGE) || '';
+const OWN_ADZUNA_STORAGE = 'jobapplyagent-adzuna';
+function getAdzunaKeys(){
+  try{
+    const v = JSON.parse(localStorage.getItem(OWN_ADZUNA_STORAGE) || 'null');
+    return v && v.id && v.key ? { id: String(v.id), key: String(v.key) } : null;
+  }catch(e){
+    return null;
+  }
+}
 // ---------- /CONFIG ----------
 const THEME_STORAGE_KEY = 'jobapplyagent-theme';
 
@@ -380,7 +389,7 @@ let lastResults = [];
 
 const SOURCE_HINTS = {
   arbeitnow: 'Mostly Europe-based and remote tech roles. Good for remote work, thin for India.',
-  adzuna: 'Wider listings, including India. It only gives a short preview, so open the posting and paste the full description before using Match & tailor.',
+  adzuna: 'Wider listings, including India. Needs your free Adzuna keys (Overview, under "Your Adzuna keys"). It only gives a short preview, so open the posting and paste the full description before using Match & tailor.',
   company: 'Type the name exactly as it appears in the careers URL (boards.greenhouse.io/NAME or jobs.lever.co/NAME). Companies with their own career systems, such as Google or Amazon, cannot be searched this way.'
 };
 
@@ -392,7 +401,8 @@ const SEARCH_ERRORS = {
   company_not_found: 'No Greenhouse or Lever board found with that name. Check the spelling against the company\'s careers URL.',
   bad_company: 'Use only letters, numbers and hyphens for the company name.',
   forbidden_origin: 'This site is not allowed to use the proxy. Add its address to ALLOWED_ORIGINS on the server.',
-  ADZUNA_NEEDS_PROXY: 'Adzuna uses a private key, so it needs the proxy. Pick another source, or connect the proxy (see the README).'
+  bad_keys: 'Adzuna rejected the keys. Check the app ID and app key you saved in Overview, under "Your Adzuna keys".',
+  ADZUNA_NEEDS_KEYS: 'Adzuna needs free keys. Add them in Overview, under "Your Adzuna keys", or connect a proxy that has them (see the README).'
 };
 const DIRECT_HINT = ' If your browser is blocking direct requests to that site, connecting the proxy gets around it.';
 
@@ -428,7 +438,8 @@ function renderSearchResults(){
 }
 
 async function runSearch(p){
-  if(proxyReady()){
+  const adz = p.source === 'adzuna' ? getAdzunaKeys() : null;
+  if(proxyReady() && !adz){
     const params = new URLSearchParams({ source: p.source, q: p.q, location: p.location });
     if(p.source === 'company') params.set('company', p.company);
     let response;
@@ -442,9 +453,10 @@ async function runSearch(p){
     if(!response.ok) throw new Error((data && data.error) || 'API_ERROR');
     return data;
   }
-  if(p.source === 'adzuna') throw new Error('ADZUNA_NEEDS_PROXY');
+  if(p.source === 'adzuna' && !adz) throw new Error('ADZUNA_NEEDS_KEYS');
   try{
-    return await JobsCore.searchJobs(p, { fetch: (u, o) => fetch(u, o), env: {} });
+    const env = adz ? { ADZUNA_APP_ID: adz.id, ADZUNA_APP_KEY: adz.key } : {};
+    return await JobsCore.searchJobs(p, { fetch: (u, o) => fetch(u, o), env: env });
   }catch(e){
     const err = new Error((e && e.message) || 'source_unavailable');
     err.direct = true;
@@ -732,9 +744,10 @@ function statusRows(){
   else rows.push(['bad', 'Proxy', health.code === 'forbidden_origin'
     ? 'Found it, but it refused this site. Add this site\'s address to ALLOWED_ORIGINS on the server.'
     : 'Could not reach it. Check PROXY_URL at the top of js/app.js and that the proxy is deployed.']);
+  const ownAdz = !!getAdzunaKeys();
   rows.push(['ok', 'Job search', up
-    ? 'Ready through the proxy.' + (health.adzuna ? ' Adzuna is on.' : ' Adzuna is off (it needs ADZUNA_APP_ID and ADZUNA_APP_KEY on the server).')
-    : 'Ready, straight from your browser (open board and company careers pages). Adzuna needs the proxy.']);
+    ? 'Ready through the proxy.' + (ownAdz ? ' Adzuna is on (your keys).' : health.adzuna ? ' Adzuna is on.' : ' Adzuna is off. Save your free Adzuna keys below, or set ADZUNA_APP_ID and ADZUNA_APP_KEY on the server.')
+    : 'Ready, straight from your browser (open board and company careers pages).' + (ownAdz ? ' Adzuna is on (your keys).' : ' Adzuna is off. Save your free Adzuna keys below to turn it on.')]);
   if(getOwnKey()) rows.push(['ok', 'AI features', 'Ready, using your own key (stored only in this browser).']);
   else if(up && health.ai) rows.push(['ok', 'AI features', 'Ready through the proxy.']);
   else if(up) rows.push(['bad', 'AI features', 'The proxy is up but has no ANTHROPIC_API_KEY set. Add it on the server, or save your own key below.']);
@@ -770,7 +783,30 @@ document.getElementById('removeOwnKeyBtn').addEventListener('click', () => {
   renderOwnKeyNote();
   renderStatus();
 });
+function renderAdzunaNote(){
+  document.getElementById('adzunaNote').textContent = getAdzunaKeys() ? 'Adzuna keys are saved in this browser.' : 'No Adzuna keys saved.';
+}
+document.getElementById('saveAdzunaBtn').addEventListener('click', () => {
+  const idEl = document.getElementById('adzunaIdInput');
+  const keyEl = document.getElementById('adzunaKeyInput');
+  const id = idEl.value.trim();
+  const key = keyEl.value.trim();
+  if(!id || !key){ showToast('Enter both the app ID and the app key.', 'error'); return; }
+  localStorage.setItem(OWN_ADZUNA_STORAGE, JSON.stringify({ id: id, key: key }));
+  idEl.value = '';
+  keyEl.value = '';
+  showToast('Adzuna keys saved in this browser.', 'success');
+  renderAdzunaNote();
+  renderStatus();
+});
+document.getElementById('removeAdzunaBtn').addEventListener('click', () => {
+  localStorage.removeItem(OWN_ADZUNA_STORAGE);
+  showToast('Adzuna keys removed.', 'success');
+  renderAdzunaNote();
+  renderStatus();
+});
 document.getElementById('checkStatusBtn').addEventListener('click', checkConnection);
+renderAdzunaNote();
 renderOwnKeyNote();
 checkConnection();
 

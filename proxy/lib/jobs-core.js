@@ -175,7 +175,7 @@
     if (q) params.set('what', q);
     if (location) params.set('where', location);
     const r = await getJson(fetchFn, 'https://api.adzuna.com/v1/api/jobs/' + cc + '/search/1?' + params);
-    if (!r.ok) throw new Error('source_unavailable');
+    if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'bad_keys' : 'source_unavailable');
     const jobs = ((r.data && r.data.results) || []).map((j) => ({
       title: htmlToText(j.title),
       company: (j.company && j.company.display_name) || '',
@@ -231,7 +231,7 @@
 
 
   // One entry point for every source. `deps` = { fetch, env }. Throws Error(code) with one of:
-  // bad_source, bad_company, company_not_found, source_not_configured, source_unavailable.
+  // bad_source, bad_company, company_not_found, source_not_configured, bad_keys, source_unavailable.
   async function searchJobs(params, deps) {
     const p = params || {};
     const fetchFn = deps.fetch;
@@ -247,7 +247,7 @@
       else if (source === 'company') result = await fromCompany(fetchFn, String(p.company || '').trim());
       else throw new Error('bad_source');
     } catch (err) {
-      const known = ['bad_source', 'source_unavailable', 'source_not_configured', 'bad_company', 'company_not_found'];
+      const known = ['bad_source', 'source_unavailable', 'source_not_configured', 'bad_company', 'company_not_found', 'bad_keys'];
       throw new Error(known.includes(err && err.message) ? err.message : 'source_unavailable');
     }
 

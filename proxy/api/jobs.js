@@ -12,7 +12,7 @@ const core = require('../lib/jobs-core');
 
 const limiter = makeLimiter(60, 10 * 60 * 1000); // 60 searches per IP per 10 minutes
 
-const STATUS = { bad_source: 400, bad_company: 400, company_not_found: 404, source_not_configured: 503, source_unavailable: 502 };
+const STATUS = { bad_source: 400, bad_company: 400, company_not_found: 404, source_not_configured: 503, bad_keys: 502, source_unavailable: 502 };
 
 async function handler(req, res) {
   const allowed = applyCors(req, res, 'GET, OPTIONS');

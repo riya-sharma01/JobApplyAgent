@@ -245,3 +245,17 @@ test('arbeitnow: the same listing on two pages is only returned once', async () 
   assert.strictEqual(res.body.scanned, 2);
   assert.strictEqual(res.body.jobs.length, 2);
 });
+
+test('adzuna: rejected keys are reported as bad_keys, not as an outage', async () => {
+  process.env.ADZUNA_APP_ID = 'id1';
+  process.env.ADZUNA_APP_KEY = 'wrong';
+  mockFetch([['adzuna.com', { status: 401, body: null }]]);
+  const res = makeRes();
+  await handler(makeReq({ source: 'adzuna', q: 'java' }), res);
+  assert.strictEqual(res.statusCode, 502);
+  assert.strictEqual(res.body.error, 'bad_keys');
+  mockFetch([['adzuna.com', { status: 500, body: null }]]);
+  const res2 = makeRes();
+  await handler(makeReq({ source: 'adzuna', q: 'java' }), res2);
+  assert.strictEqual(res2.body.error, 'source_unavailable');
+});

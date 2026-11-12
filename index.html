@@ -68,6 +68,17 @@
         <div class="note" id="ownKeyNote"></div>
         <div class="note"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get an API key here</a></div>
       </div>
+      <div class="card">
+        <h3>Your Adzuna keys (optional)</h3>
+        <p class="note" style="margin-top:0;">Adzuna has the best coverage for India. It needs a free app ID and app key. Sign up at <a href="https://developer.adzuna.com" target="_blank" rel="noopener">developer.adzuna.com</a>, paste both here, and Adzuna search runs from this browser. They are stored only in this browser and sent only to Adzuna.</p>
+        <div class="row" style="align-items:flex-end;">
+          <div class="field" style="margin-bottom:0;"><label for="adzunaIdInput">App ID</label><input type="text" id="adzunaIdInput" autocomplete="off"></div>
+          <div class="field" style="margin-bottom:0;"><label for="adzunaKeyInput">App key</label><input type="password" id="adzunaKeyInput" autocomplete="off"></div>
+          <button class="btn" id="saveAdzunaBtn" style="flex:none;">Save keys</button>
+          <button class="btn secondary" id="removeAdzunaBtn" style="flex:none;">Remove</button>
+        </div>
+        <div class="note" id="adzunaNote"></div>
+      </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-num" id="ovResumeStat">—</div><div class="stat-lbl">ATS basics passed</div></div>
         <div class="stat-card"><div class="stat-num" id="ovJobsStat">0</div><div class="stat-lbl">Jobs in pipeline</div></div>
@@ -130,7 +141,7 @@
           <div class="field"><label for="searchSource">Where to search</label>
             <select id="searchSource">
               <option value="arbeitnow">Open board — Europe &amp; remote tech</option>
-              <option value="adzuna">Adzuna — India &amp; worldwide</option>
+              <option value="adzuna">Adzuna — India &amp; worldwide (needs free keys)</option>
               <option value="company">One company's careers page</option>
             </select>
           </div>
