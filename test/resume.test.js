@@ -5,13 +5,13 @@ const { parseResume, analyzeResume, matchSection, scoreResume, normalizeReview, 
 const { checkATS } = require('../js/ats.js');
 
 // Plain-text version of a real fresher resume, shaped like the PDF extraction output.
-const GOOD = `Riya Sharma
-riyasharmasj5@gmail.com | +91-7015783855 | github.com/riya-sharma01 | linkedin.com/in/riyasharma04
+const GOOD = `Alex Rao
+alex.rao@example.com | +91-9876543210 | github.com/alexrao | linkedin.com/in/alexrao
 Education
-National Institute of Technology, Manipur 08 2023 -- 06 2027
+Example Institute of Technology 08 2023 -- 06 2027
 B.Tech in Computer Science and Engineering CGPA: 7.87 / 10.0
 Experience
-Software Engineering Intern -- Siemens EDA 05 2026 -- 07 2026
+Software Engineering Intern -- Acme Systems 05 2026 -- 07 2026
 Automation Engineering | Aprisa Regression Testing
 \u2022 Automated regression workflows across 66 benchmark and daily testcases, improving execution consistency and reducing repetitive manual effort.
 \u2022 Developed reusable scripts for testcase configuration, execution, result collection, and automated validation.
@@ -34,7 +34,7 @@ Java, Spring Boot, React, MySQL, D3.js
 \u2022 Developed Spring Boot REST APIs for user management, lessons, questions, progress tracking, and structured learning data.
 \u2022 Created interactive D3.js visualizations for calculus, trigonometry, and linear algebra to improve conceptual understanding.
 Leadership & Activities
-Qubit Coding Club -- Core Member, NIT Manipur 09 2023 -- Present
+Qubit Coding Club -- Core Member, Example Institute 09 2023 -- Present
 \u2022 Conducted six sessions on recursion, trees, and greedy algorithms for 50+ students.
 \u2022 Mentored 25 junior members by reviewing Java solutions and explaining logical and edge-case errors.
 Achievements
@@ -59,10 +59,10 @@ test('parseResume finds the sections, bullets, contact info and skills', () => {
     ['header', 'education', 'experience', 'skills', 'projects', 'leadership', 'achievements']);
   assert.strictEqual(p.bullets.length, 15);
   assert.strictEqual(p.sections.find((s) => s.key === 'experience').bullets.length, 4);
-  assert.strictEqual(p.contact.email, 'riyasharmasj5@gmail.com');
+  assert.strictEqual(p.contact.email, 'alex.rao@example.com');
   assert.strictEqual(p.contact.phone, true);
-  assert.strictEqual(p.contact.linkedin, 'linkedin.com/in/riyasharma04');
-  assert.strictEqual(p.contact.github, 'github.com/riya-sharma01');
+  assert.strictEqual(p.contact.linkedin, 'linkedin.com/in/alexrao');
+  assert.strictEqual(p.contact.github, 'github.com/alexrao');
   assert.ok(p.skills.includes('Spring Boot') && p.skills.includes('C++') && p.skills.length >= 14, p.skills.join('|'));
   assert.ok(!p.skills.some((s) => /^languages/i.test(s)), 'labels like "Languages:" are not skills');
 });

@@ -26,13 +26,13 @@ const FILLER = ' word'.repeat(160);
 
 test('itemsToText keeps one line per row and bullets at the start of their line', () => {
   const items = [
-    ...pdfLine(760, 'Riya Sharma'),
+    ...pdfLine(760, 'Alex Rao'),
     ...pdfLine(745, 'Experience'),
     ...pdfLine(730, 'Automated regression workflows across 66 testcases', { bullet: true }),
     ...pdfLine(718, 'Developed reusable scripts', { bullet: true }),
   ];
   assert.deepStrictEqual(itemsToText(items).split('\n'), [
-    'Riya Sharma',
+    'Alex Rao',
     'Experience',
     '\u2022 Automated regression workflows across 66 testcases',
     '\u2022 Developed reusable scripts',
@@ -53,8 +53,8 @@ test('a resume built from PDF items passes bullets and symbols (the bug you hit)
   let items = [];
   let y = 780;
   const add = (s, o) => { items = items.concat(pdfLine(y, s, o)); y -= 13; };
-  add('Riya Sharma');
-  add('riya@example.com | +91-7015783855 | github.com/riya-sharma01');
+  add('Alex Rao');
+  add('alex@example.com | +91-9876543210 | github.com/alexrao');
   add('Education');
   add('B.Tech in Computer Science and Engineering');
   add('Experience');
@@ -70,7 +70,7 @@ test('a resume built from PDF items passes bullets and symbols (the bug you hit)
 });
 
 test('the old behaviour (everything flattened into one line) is what failed before', () => {
-  const flat = 'Riya riya@example.com +91-7015783855 Education Experience Skills ' +
+  const flat = 'Alex alex@example.com +91-9876543210 Education Experience Skills ' +
     '\u2022 one \u2022 two \u2022 three \u2022 four ' + FILLER;
   const r = checkATS(flat);
   // still works on flattened pasted text, because bullet glyphs are counted anywhere
@@ -86,7 +86,7 @@ test('bullet glyphs and ligatures are not "unusual symbols"', () => {
 });
 
 test('icons and emoji are flagged, and the note names them', () => {
-  const r = checkATS('\u2706 +91-7015783855 \u2709 a@b.com \ud83d\udcde call\nEducation\n' + FILLER);
+  const r = checkATS('\u2706 +91-9876543210 \u2709 a@b.com \ud83d\udcde call\nEducation\n' + FILLER);
   assert.ok(!pass(r, 'No unusual'));
   const n = note(r, 'No unusual');
   assert.ok(n.includes('\u2706') && n.includes('\u2709'), n);
@@ -107,7 +107,7 @@ test('dash and asterisk list lines count as bullets', () => {
 });
 
 test('hasPhone accepts real formats', () => {
-  for (const p of ['+91-7015783855', '+91 70157 83855', '7015783855', '(080) 2345 6789', '+1 415 555 0132', '415-555-0132']) {
+  for (const p of ['+91-9876543210', '+91 98765 43210', '9876543210', '(080) 2345 6789', '+1 415 555 0132', '415-555-0132']) {
     assert.ok(hasPhone(p), p);
   }
 });
@@ -119,7 +119,7 @@ test('hasPhone rejects date ranges, years and scores (the old false positive)', 
 });
 
 test('a resume with dates but no phone number fails the phone check', () => {
-  const r = checkATS('Riya a@b.com\nEducation\n08 2023 -- 06 2027\nExperience\n05 2026 -- 07 2026\nSkills\n' + FILLER);
+  const r = checkATS('Alex a@b.com\nEducation\n08 2023 -- 06 2027\nExperience\n05 2026 -- 07 2026\nSkills\n' + FILLER);
   assert.ok(!pass(r, 'Phone'));
 });
 

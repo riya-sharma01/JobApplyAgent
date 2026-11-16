@@ -1,0 +1,13 @@
+/* Fixes for elements added after styles.css. Everything here uses the same colour
+   variables, so your theme (light or dark) still applies. */
+
+/* password boxes (AI key, Adzuna key) look like the other inputs */
+input[type=password]{
+  width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+  border-radius:var(--radius); padding:9px 11px; font-family:inherit; font-size:14px;
+}
+input[type=password]:focus{ outline:none; border-color:var(--forest); }
+
+/* tick marks and the sidebar badge were a pale green on a pale background */
+.ats-icon.pass{ color:var(--forest); font-weight:700; }
+.stage-btn.active .badge-count{ color:var(--forest); border-color:var(--forest); font-weight:600; }

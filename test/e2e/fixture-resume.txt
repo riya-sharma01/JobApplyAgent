@@ -1,0 +1,53 @@
+Alex Rao
+alex.rao@example.com | +91-9876543210 | https://github.com/alexrao | https://www.linkedin.com/in/alexrao/
+Professional Summary
+Final-year Computer Science and Engineering student at Example Institute with software engineering internship experience
+at Acme Systems and experience building full-stack applications. Proficient in Java and object-oriented programming, with
+practical experience using Spring Boot, MySQL, JavaScript, HTML, CSS, and REST APIs. Worked on regression automation,
+software testing, and failure analysis across 66 test cases, and integrated AI APIs into an application to support automated
+workflows and user feedback.
+Education
+Example Institute of Technology Aug 2023 – Jun 2027
+B.Tech in Computer Science and Engineering CGPA: 7.87/10.0
+Technical Skills
+Programming Languages: Java, JavaScript, C++, Python, SQL
+Core CS: Object-Oriented Programming, Data Structures and Algorithms, Operating Systems, Database Management
+Systems, Computer Networks
+Frameworks and Databases: Spring Boot, React, Node.js, Express.js, MySQL, SQLite
+Software Engineering: REST APIs, Debugging, Regression Testing, Failure Analysis
+Tools and Systems: Git, GitHub, Linux, VS Code, Postman
+Experience
+Software Engineering Intern – Acme Systems May 2026 – Jul 2026
+Automation Engineering – Regression Testing
+• Automated regression workflows across 66 benchmark and daily test cases, reducing repetitive manual execution during
+software validation.
+• Authored reusable scripts for 4 stages: test configuration, execution, result collection, and validation.
+• Analyzed logs and outputs across 66 test cases to isolate failures and diagnose regression issues.
+• Investigated unexpected execution results to support debugging and software quality.
+Projects
+JobApplyAgent – AI-Assisted Job Readiness Platform Sep 2026
+JavaScript, HTML, CSS, REST APIs, Anthropic API
+• Built a platform combining 6 job-readiness workflows, including job discovery, resume analysis, role matching, interview
+feedback, and application tracking.
+• Developed resume parsing for PDF, DOCX, and TXT formats with heuristic checks for structured ATS-readiness feedback.
+• Integrated REST and Anthropic APIs to automate job analysis, matching, and interview feedback workflows.
+• Added a 5-state application tracker with LocalStorage persistence and JSON data export and restore functionality.
+MathLearn – Mathematics Learning Platform Aug 2026
+Java, Spring Boot, React, MySQL, D3.js
+• Developed a full-stack learning platform spanning 6 mathematics domains with structured lessons and progress tracking.
+• Designed Spring Boot REST APIs for authentication, lessons, assessments, and progress management.
+• Modeled relational MySQL data for users, XP, levels, streaks, and achievements and integrated JWT-based authentication.
+• Created 3+ interactive D3.js visualizations for calculus, trigonometry, and linear algebra.
+TypeDuel – Gamified Typing Application Jul 2026
+JavaScript, HTML, CSS
+• Created a browser-based typing game where real-time words-per-minute and accuracy determine combat outcomes.
+• Engineered opponent logic, attack and damage mechanics, match progression, and replay functionality.
+• Tracked 5+ gameplay metrics to provide immediate performance feedback during gameplay.
+Leadership and Activities
+Coding Club – Core Member, Example Institute Sep 2023 – Present
+• Led 6 coding sessions on recursion, trees, and greedy algorithms for 50+ students.
+• Mentored 25 junior members through Java code reviews, debugging, and edge-case analysis.
+Achievements
+• Achieved a 2395 LeetCode contest rating, earned the Guardian Badge, and ranked in the top 0.34%.
+• Solved 700+ algorithmic problems across LeetCode and GeeksforGeeks.
+• Selected among the top 500 candidates for Example Engineering Bootcamp Phase 2.

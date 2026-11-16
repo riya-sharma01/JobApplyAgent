@@ -259,3 +259,18 @@ test('adzuna: rejected keys are reported as bad_keys, not as an outage', async (
   await handler(makeReq({ source: 'adzuna', q: 'java' }), res2);
   assert.strictEqual(res2.body.error, 'source_unavailable');
 });
+
+test('adzuna: a reply with no results list is a failure, not "0 listings"', async () => {
+  process.env.ADZUNA_APP_ID = 'id1';
+  process.env.ADZUNA_APP_KEY = 'key1';
+  mockFetch([['adzuna.com', { status: 200, body: { exception: 'something odd' } }]]);
+  const res = makeRes();
+  await handler(makeReq({ source: 'adzuna', q: 'java' }), res);
+  assert.strictEqual(res.statusCode, 502);
+  assert.strictEqual(res.body.error, 'source_unavailable');
+  mockFetch([['adzuna.com', { status: 200, body: { results: [] } }]]);
+  const ok = makeRes();
+  await handler(makeReq({ source: 'adzuna', q: 'java' }), ok);
+  assert.strictEqual(ok.statusCode, 200);
+  assert.strictEqual(ok.body.jobs.length, 0);
+});

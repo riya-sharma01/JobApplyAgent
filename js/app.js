@@ -437,6 +437,53 @@ function renderSearchResults(){
   }).join('');
 }
 
+// Adzuna documents JSONP as its browser-friendly format. If the browser blocks a normal request,
+// the same data is loaded inside a sandboxed iframe. That iframe cannot reach this page, its
+// storage or your resume: all it can do is hand plain data back with postMessage.
+function jsonpSandboxed(url, timeoutMs){
+  return new Promise((resolve, reject) => {
+    const id = 'jsonp' + Math.random().toString(36).slice(2);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.style.display = 'none';
+    let done = false;
+    let timer = null;
+    function finish(err, data){
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      iframe.remove();
+      if(err) reject(err); else resolve(data);
+    }
+    function onMessage(e){
+      if(e.source !== iframe.contentWindow || !e.data || e.data.id !== id) return;
+      if(e.data.error || typeof e.data.data !== 'object' || e.data.data === null) finish(new Error('JSONP_FAILED'));
+      else finish(null, e.data.data);
+    }
+    timer = setTimeout(() => finish(new Error('JSONP_TIMEOUT')), timeoutMs || 12000);
+    window.addEventListener('message', onMessage);
+    const src = url + (url.includes('?') ? '&' : '?') + 'callback=cb';
+    iframe.srcdoc =
+      '<script>window.cb=function(d){parent.postMessage({id:' + JSON.stringify(id) + ',data:d},"*")};<\/script>' +
+      '<script src="' + src.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" onerror="parent.postMessage({id:\'' + id + '\',error:1},\'*\')"><\/script>';
+    document.body.appendChild(iframe);
+  });
+}
+
+// fetch, with the Adzuna fallback described above for requests the browser refuses.
+async function browserFetch(url, opts){
+  try{
+    return await fetch(url, opts);
+  }catch(e){
+    if(!/^https:\/\/api\.adzuna\.com\//.test(url)) throw e;
+    const u = new URL(url);
+    u.searchParams.delete('content-type'); // JSONP is Adzuna's default format
+    const data = await jsonpSandboxed(u.toString());
+    return { ok: true, status: 200, json: async () => data };
+  }
+}
+
 async function runSearch(p){
   const adz = p.source === 'adzuna' ? getAdzunaKeys() : null;
   if(proxyReady() && !adz){
@@ -456,7 +503,7 @@ async function runSearch(p){
   if(p.source === 'adzuna' && !adz) throw new Error('ADZUNA_NEEDS_KEYS');
   try{
     const env = adz ? { ADZUNA_APP_ID: adz.id, ADZUNA_APP_KEY: adz.key } : {};
-    return await JobsCore.searchJobs(p, { fetch: (u, o) => fetch(u, o), env: env });
+    return await JobsCore.searchJobs(p, { fetch: browserFetch, env: env });
   }catch(e){
     const err = new Error((e && e.message) || 'source_unavailable');
     err.direct = true;
@@ -493,7 +540,10 @@ async function searchJobs(){
         (source === 'arbeitnow' ? ', or switch to Adzuna or a company page, since this board is mostly Europe and remote tech.' : '.');
     }
   }catch(e){
-    const msg = (SEARCH_ERRORS[e && e.message] || 'Search failed. Try again.') + (e && e.direct && e.message === 'source_unavailable' ? DIRECT_HINT : '');
+    const direct = e && e.direct && e.message === 'source_unavailable';
+    const msg = direct && source === 'adzuna'
+      ? 'Adzuna did not answer. Check that the app ID and key are right (you can test them at developer.adzuna.com/activedocs), then try again. If they are right, your browser may be blocking the request, and connecting the proxy gets around it.'
+      : (SEARCH_ERRORS[e && e.message] || 'Search failed. Try again.') + (direct ? DIRECT_HINT : '');
     statusEl.innerHTML = '<span class="error-text">' + escapeHtml(msg) + '</span>';
   }finally{
     btn.disabled = false;

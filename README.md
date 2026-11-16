@@ -12,12 +12,14 @@ serverless proxy (`proxy/`) that keeps the LLM API key out of the browser.
 jobapplyagent-site/
 ├── index.html          structure
 ├── css/styles.css      all styling (light + dark theme)
+├── css/extra.css       small fixes for elements added later (uses the same colour variables)
 ├── js/app.js           page behavior
 ├── js/ats.js           resume text extraction + basic ATS checks (no page dependencies)
 ├── js/resume.js        resume parser + content review (impact, brevity, style, structure)
 ├── js/prompts.js       AI prompts (copy of proxy/lib/prompts.js, see "Shared code")
 ├── js/jobs-core.js     job search logic (copy of proxy/lib/jobs-core.js)
 ├── test/               tests for the js/ files
+├── test/e2e/           optional real-browser test (needs Playwright, see Tests)
 ├── tools/sync-shared.js  copies the shared files from proxy/lib/ to js/
 ├── favicon.svg         icon (also used as the sidebar logo)
 ├── proxy/              serverless function that holds the API key (deployed separately)
@@ -80,6 +82,18 @@ node --test test/sync.test.js    # js/ copies match proxy/lib/
 cd proxy && npm test             # proxy endpoints
 ```
 
+Optional end-to-end test: it starts the site, opens it in a real Chromium browser and clicks
+through resume review, every job source, the AI features, the tracker and backup. The outside
+websites (job boards, AI) are simulated, so it needs no keys and no internet. It uses made-up
+data only.
+
+```
+cd test/e2e
+npm install
+npx playwright install chromium
+npm test
+```
+
 ## Two ways to run it
 
 The site works in two modes. The **Overview** tab has a "What's working" card that shows
@@ -90,8 +104,11 @@ tracker and backups run in your browser. Job search runs straight from your brow
 against the open board and company careers pages. For the AI features, paste your own
 key under "Your AI key" on the Overview tab. It is stored only in that browser and sent
 only to the AI provider. Adzuna search (the best source for India) works the same way: save your
-free app ID and app key from developer.adzuna.com under "Your Adzuna keys". If a job site
-blocks direct browser requests you get a clear message, and connecting the proxy fixes it.
+free app ID and app key from developer.adzuna.com under "Your Adzuna keys". If a browser
+refuses the normal request, the site falls back to the JSONP format Adzuna documents for
+browsers, loaded inside a sandboxed iframe so that script can never touch your resume or
+stored data. If a job site still can't be reached you get a clear message, and connecting the
+proxy fixes it.
 
 **2. With the proxy (for visitors).** A small serverless function holds the key, so
 visitors can use the AI features without a key of their own. Set it up below.

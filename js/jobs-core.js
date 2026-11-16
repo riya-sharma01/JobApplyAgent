@@ -176,7 +176,8 @@
     if (location) params.set('where', location);
     const r = await getJson(fetchFn, 'https://api.adzuna.com/v1/api/jobs/' + cc + '/search/1?' + params);
     if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'bad_keys' : 'source_unavailable');
-    const jobs = ((r.data && r.data.results) || []).map((j) => ({
+    if (!r.data || !Array.isArray(r.data.results)) throw new Error('source_unavailable');
+    const jobs = r.data.results.map((j) => ({
       title: htmlToText(j.title),
       company: (j.company && j.company.display_name) || '',
       location: (j.location && j.location.display_name) || '',
